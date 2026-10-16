@@ -1,0 +1,56 @@
+{
+  "_comment_契約說明": [
+    "這是前端與訓練端之間的「模型契約」樣板檔,不是真正的模型權重。",
+    "前端(../index.html)只認這份 JSON 記錄的參數,不會把 imgsz/類別順序/輸出格式寫死在程式碼裡。",
+    "訓練端(../../training/train.md)用 Ultralytics 訓練並匯出 ghg.onnx 後,",
+    "請比照這份樣板,把實際的 imgsz、類別順序、輸出張量格式填進正式的 model.json,",
+    "與 ghg.onnx 放在同一個 app/models/ 目錄。只要契約欄位對齊,前端程式碼不需要修改。",
+    "YOLO/.gitignore 已加入 !app/models/model.json 例外規則,此檔可正常進版控。"
+  ],
+
+  "modelFile": "ghg.onnx",
+
+  "imgsz": 640,
+
+  "task": "detect",
+
+  "inputName": "images",
+  "outputName": "output0",
+
+  "_comment_outputFormat": "前端 parseYoloOutput() 目前假設 Ultralytics 預設匯出格式:單一輸出張量,dims 為 [1, 4+nc, num_anchors] 或 [1, num_anchors, 4+nc](兩種都會自動判斷),每個 anchor 前 4 個值是 xywh(相對 imgsz 640x640 letterbox 後影像的像素座標,中心點+寬高),後面 nc 個值是每一類的信心(已假設是 0~1、不需要再做一次 sigmoid)。若正式匯出格式不同(例如多一欄 objectness、座標是正規化 0~1 而非像素、或需要額外 sigmoid),只需要調整 index.html 內的 parseYoloOutput() 這個函式,不影響前端其他部分(相機/疊圖/提醒/登記/清單)。",
+  "outputFormat": "yolov8-style-xywh-px-sigmoided",
+
+  "confThreshold": 0.35,
+  "iouThreshold": 0.45,
+
+  "_comment_classNames": "順序必須與 dataset/data.yaml 的 names 完全一致(index 0~11),前端會依此 index 對應到 classLabels 顯示中文。",
+  "classNames": [
+    "gas_stove",
+    "boiler",
+    "generator",
+    "brush_cutter",
+    "lpg_cylinder",
+    "car",
+    "scooter",
+    "truck",
+    "fire_extinguisher",
+    "gas_cylinder",
+    "ac_outdoor",
+    "fridge"
+  ],
+
+  "classLabels": [
+    "瓦斯爐",
+    "熱水鍋爐",
+    "發電機",
+    "除草機",
+    "桶裝瓦斯桶",
+    "汽車",
+    "機車",
+    "貨車",
+    "滅火器",
+    "實驗室氣體鋼瓶",
+    "冷氣室外機",
+    "冰箱/冷凍櫃"
+  ]
+}

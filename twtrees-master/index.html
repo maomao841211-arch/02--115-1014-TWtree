@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>校園排放源掃描</title>
+<meta name="theme-color" content="#bf360c">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<style>
+  :root {
+    --fg: #1b1b1b;
+    --bg: #fff7f0;
+    --card: #ffffff;
+    --accent: #e65100;
+    --accent-dark: #bf360c;
+    --warn: #b71c1c;
+    --line: #ecd9c9;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 12px 14px 40px;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    margin: 8px 0 2px;
+    text-align: center;
+    color: var(--accent-dark);
+  }
+  header p {
+    text-align: center;
+    color: #555;
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+  }
+  .banner {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--accent-dark);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    text-align: center;
+    padding: 10px 8px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  section.card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-weight: bold;
+    font-size: 1.05rem;
+    margin: 0 0 10px;
+    color: var(--accent-dark);
+  }
+  .section-title small {
+    display: block;
+    font-weight: normal;
+    color: #777;
+    font-size: 0.8rem;
+    margin-top: 2px;
+  }
+  button {
+    display: block;
+    width: 100%;
+    font-size: 1.05rem;
+    padding: 13px 10px;
+    margin: 6px 0;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button.secondary { background: #607d8b; }
+  button.danger { background: var(--warn); }
+  button.ghost {
+    background: #fbeee1;
+    color: var(--accent-dark);
+    border: 1px solid var(--line);
+  }
+  button:disabled {
+    background: #d8ccc0;
+    color: #eee;
+    cursor: not-allowed;
+  }
+  button:active:not(:disabled) { filter: brightness(0.9); }
+  select {
+    width: 100%; font-size: 1.1rem; padding: 10px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 10px; background: #fff;
+  }
+  .msg { font-size: 0.88rem; padding: 10px; border-radius: 8px; margin-top: 8px; }
+  .msg.error { background: #fdecea; color: var(--warn); border: 1px solid #f5c6cb; }
+  .msg.info { background: #fef3e8; color: #8a4b00; border: 1px solid #f2d9b8; }
+  .msg.ok { background: #eef6ec; color: #1b5e20; border: 1px solid #bcd8b8; }
+
+  .camera-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .camera-wrap video {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000;
+    z-index: 1;
+  }
+  .camera-wrap canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none;
+    z-index: 2;
+  }
+  /* iOS 無 navigator.vibrate 的後備提醒之一:整個相機畫面紅色閃爍 */
+  .flash-overlay {
+    position: absolute; inset: 0; z-index: 4; pointer-events: none;
+    background: rgba(211, 47, 47, 0);
+  }
+  .flash-overlay.active {
+    animation: ghgFlash 0.35s ease-in-out 3;
+  }
+  @keyframes ghgFlash {
+    0%, 100% { background: rgba(211, 47, 47, 0); }
+    50% { background: rgba(211, 47, 47, 0.55); }
+  }
+  /* 浮動操作列:釘在相機畫面底部,z-index 高於 canvas/閃爍層,對準目標時不用捲動頁面就能按 */
+  .camera-float-bar {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .float-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .camera-float-bar button { margin: 0; padding: 12px 8px; font-size: 0.95rem; }
+  .camera-float-bar button.ghost { background: rgba(255,255,255,0.92); color: var(--accent-dark); }
+  .cam-note { font-size: 0.82rem; color: #666; margin-top: 6px; line-height: 1.5; }
+
+  .model-status {
+    font-size: 0.85rem; color: #333; background: #fafafa; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin: 8px 0;
+  }
+  .model-status.skeleton { background: #fef3e8; color: #8a4b00; border-color: #f2d9b8; }
+  .model-status.ready { background: #eef6ec; color: #1b5e20; border-color: #bcd8b8; }
+
+  label.field-label { display: block; font-size: 0.92rem; margin-bottom: 4px; color: #444; }
+
+  .detect-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .detect-row:last-child { border-bottom: none; }
+  .detect-row-main { flex: 1; font-size: 0.92rem; color: #333; min-width: 0; }
+  .detect-row-main b { font-size: 1rem; color: var(--accent-dark); word-break: break-word; }
+  .detect-row-sub { font-size: 0.82rem; color: #666; margin-top: 2px; word-break: break-word; }
+  .detect-row-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .detect-row-actions button {
+    width: auto;
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .summary-box { background: #fef3e8; border: 1px solid #f2d9b8; border-radius: 10px; padding: 14px; text-align: center; }
+  .summary-box .summary-count { font-size: 1.3rem; font-weight: bold; color: var(--accent-dark); }
+
+  footer { font-size: 0.78rem; color: #666; line-height: 1.5; padding: 6px 4px 0; }
+  footer p { margin: 4px 0; }
+  hr.sep { border: none; border-top: 1px dashed var(--line); margin: 14px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>校園排放源掃描</h1>
+    <p>相機掃校園,YOLO 端上偵測溫室氣體排放源物件,偵測到就提醒、可登記(骨架階段)。</p>
+  </header>
+
+  <div class="banner" id="banner">請先按下方「啟用相機」按鈕。</div>
+
+  <div id="model-status" class="model-status">模型狀態:準備中…</div>
+
+  <!-- 啟用相機(需使用者手勢,iOS 才會給權限) -->
+  <section class="card" id="enable-section">
+    <div class="section-title">啟用相機</div>
+    <button id="btn-enable-camera" type="button">啟用相機(開始掃描前必按)</button>
+    <div id="camera-msg" class="msg info" style="display:none;"></div>
+    <div class="cam-note">
+      本頁權重檔(ghg.onnx)因體積大另行傳遞、目前 repo 內未附。沒有模型時仍可開相機、
+      用下方「🔔 測試提醒」驗證提醒路徑是否在你的裝置上可用。
+    </div>
+  </section>
+
+  <!-- 相機即時畫面 + 疊圖 + 浮動按鍵 -->
+  <section class="card" id="camera-section" style="display:none;">
+    <div class="section-title">相機即時畫面
+      <small>偵測到的物件會疊框顯示;骨架模式(無模型)不會疊框,但仍可測試提醒。</small>
+    </div>
+    <div class="camera-wrap" id="camera-wrap">
+      <video id="camera-video" autoplay playsinline muted></video>
+      <canvas id="camera-canvas"></canvas>
+      <div class="flash-overlay" id="flash-overlay"></div>
+
+      <div class="camera-float-bar" id="camera-float-bar">
+        <div class="float-btn-grid">
+          <button id="btn-toggle-scan" type="button">▶ 開始掃描</button>
+          <button id="btn-register" class="ghost" type="button">＋ 登記此排放源</button>
+          <button id="btn-test-alert" class="ghost" type="button">🔔 測試提醒</button>
+          <button id="btn-toggle-list" class="ghost" type="button">☰ 清單</button>
+        </div>
+      </div>
+    </div>
+    <div id="alert-msg" class="msg" style="display:none;"></div>
+  </section>
+
+  <!-- 手動登記(無偵測結果、或骨架模式時使用) -->
+  <section class="card" id="manual-register-section" style="display:none;">
+    <div class="section-title">手動登記排放源
+      <small>目前沒有信心足夠的偵測結果(或骨架模式無模型),請直接從清單選一項登記。</small>
+    </div>
+    <label class="field-label" for="select-manual-class">排放源類別</label>
+    <select id="select-manual-class"></select>
+    <button id="btn-confirm-manual-register" type="button">登記(手動選擇)</button>
+    <button id="btn-cancel-manual-register" class="ghost" type="button">取消</button>
+  </section>
+
+  <!-- 記錄位置(GPS,選配) -->
+  <section class="card" id="gps-section">
+    <div class="section-title">記錄位置(GPS,選配)
+      <small>單次定位、不持續追蹤;記錄後,之後每筆登記都會附上這個座標,直到你重新定位或重設。</small>
+    </div>
+    <button id="btn-record-gps" type="button">📍 記錄目前位置</button>
+    <button id="btn-retake-gps" class="ghost" type="button" style="display:none;">重新定位</button>
+    <div id="gps-error" class="msg error" style="display:none;"></div>
+    <div id="gps-result" class="msg ok" style="display:none;"></div>
+  </section>
+
+  <!-- 已登記清單 -->
+  <section class="card" id="list-section" style="display:none;">
+    <div class="section-title">已登記的排放源
+      <small>資料儲存在此裝置的瀏覽器(localStorage),換裝置或清瀏覽器資料會消失。</small>
+    </div>
+    <div class="summary-box" style="margin-bottom: 10px;">
+      <div class="summary-count" id="summary-count">共 0 筆</div>
+    </div>
+    <div id="list-empty" class="msg info">尚未登記任何排放源。</div>
+    <div id="detect-list"></div>
+  </section>
+
+  <footer>
+    <p>本頁為單一自包含網頁應用(可加到主畫面、離線可用 app shell),影像不上傳、端上推論。</p>
+    <p>相機看不到氣體本身、也分不出冷媒/滅火器化學種類:模型只負責「找到並清點可見排放源物件」,種類與用量仍需人工填回原碳盤查表格。</p>
+    <p>iOS Safari 不支援 navigator.vibrate(),提醒改用「音效 + 畫面紅框閃爍」代替。</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // =========================================================
+  // 模型契約 fallback(讀不到 models/model.json 時使用):
+  // 12 類的 key 與順序必須與 dataset/data.yaml 完全一致。
+  // =========================================================
+  var FALLBACK_CONTRACT = {
+    modelFile: "ghg.onnx",
+    imgsz: 640,
+    inputName: "images",
+    outputName: "output0",
+    outputFormat: "yolov8-style-xywh-px-sigmoided",
+    confThreshold: 0.35,
+    iouThreshold: 0.45,
+    classNames: [
+      "gas_stove", "boiler", "generator", "brush_cutter", "lpg_cylinder",
+      "car", "scooter", "truck", "fire_extinguisher", "gas_cylinder",
+      "ac_outdoor", "fridge"
+    ],
+    classLabels: [
+      "瓦斯爐", "熱水鍋爐", "發電機", "除草機", "桶裝瓦斯桶",
+      "汽車", "機車", "貨車", "滅火器", "實驗室氣體鋼瓶",
+      "冷氣室外機", "冰箱/冷凍櫃"
+    ]
+  };
+
+  // onnxruntime-web CDN(jsdelivr)。
+  // TODO(離線支援): 目前 wasm/js 都直接吃 CDN,離線時模型推論會直接降級成骨架模式。
+  // 之後要支援完全離線,需把 onnxruntime-web 的 dist(含 .wasm)下載進本專案一起部署,
+  // 並把下面幾個常數換成本地相對路徑(換掉之後也不需要 SRI hash 了)。
+  //
+  // M5 修正(安全):此頁會要求相機+GPS 權限,若 jsdelivr 這個 CDN 被投毒竄改,
+  // 動態注入的 script 標籤就等於執行任意第三方程式碼、有能力偷用這些權限——風險不小。
+  // 對策:(1) 版本號寫死(不用 @latest)。(2) 主要 script 加 Subresource Integrity(SRI)
+  // hash,瀏覽器下載後會核對雜湊,不符就整個載入失敗(觸發 onerror → 優雅降級成骨架模式)。
+  // (3) crossOrigin="anonymous" 讓瀏覽器對這個跨源請求套用 SRI 檢查。
+  // 下面這串 sha384 是在建置當下對 onnxruntime-web@1.19.2/dist/ort.min.js 實際下載後
+  // 用 openssl 算出來的雜湊(非憑空捏造),只要 ORT_VERSION 不變,雜湊就應該保持一致;
+  // 之後若要升級 ORT_VERSION,務必同步重新下載計算 ORT_SCRIPT_INTEGRITY,否則升級後
+  // 這裡的 SRI 檢查一定會失敗(這是刻意的失效安全設計,不是 bug)。
+  // 殘餘風險說明:SRI 只保護這一支主程式;ort.min.js 內部還會再動態抓取對應的
+  // .wasm/worker 檔(同一個 ORT_BASE_URL 下,檔名依版本而定),這幾個檔案本身
+  // 目前沒有逐一加 SRI(第三方套件內部路徑,版本間常變動、不易維護固定雜湊清單)。
+  // 但這些後續請求是在 wasm 沙箱內執行、且必須先通過主程式的 SRI 檢查才會被觸發,
+  // 攻擊面已大幅縮小;要徹底消除殘餘風險,仍需上面提到的「整包 vendor 進本專案離線部署」。
+  var ORT_VERSION = "1.19.2";
+  var ORT_BASE_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@" + ORT_VERSION + "/dist/";
+  var ORT_SCRIPT_URL = ORT_BASE_URL + "ort.min.js";
+  var ORT_SCRIPT_INTEGRITY = "sha384-4uQjzVxVRlLf2zq2sqRNKh3IzetqQzu15fI6xgLQzhXYGJMtTZc/fvdszanED0Zp";
+
+  var ALERT_DEBOUNCE_MS = 3000; // 同一類別(含測試)3 秒內不重複提醒
+  var INFER_INTERVAL_MS = 150; // 抽幀節流:約每 150ms 跑一次推論,避免卡頓
+  var DETECTIONS_STORAGE_KEY = "ghgScan.detections";
+
+  // ---- 狀態 ----
+  var contract = FALLBACK_CONTRACT;
+  var ortLib = null;
+  var session = null;
+  var modelLoaded = false; // true = ghg.onnx 已成功載入,可以真正推論
+  var modelStatusText = "模型狀態:準備中…";
+
+  var cameraReady = false;
+  var scanning = false;
+  var canvasW = 0;
+  var canvasH = 0;
+
+  var inferencing = false;
+  var lastInferAt = 0;
+  var lastDetections = []; // [{ clsIndex, confidence, x1, y1, x2, y2 }] (座標為 video 原生像素空間)
+
+  var lastAlertAt = {}; // clsKey -> timestamp(ms),提醒 debounce 用
+  var alertMsgTimer = null;
+
+  var audioCtx = null;
+
+  var gpsCoord = null; // { lat, lng, accuracy } 單次定位記錄,null 代表尚未記錄
+
+  var detections = []; // 已登記清單(localStorage),{ id, cls, className, confidence, lat, lng, accuracy, createdAt }
+
+  // ---- DOM 參照 ----
+  var el = {
+    banner: document.getElementById("banner"),
+    modelStatus: document.getElementById("model-status"),
+
+    btnEnableCamera: document.getElementById("btn-enable-camera"),
+    cameraMsg: document.getElementById("camera-msg"),
+
+    cameraSection: document.getElementById("camera-section"),
+    cameraWrap: document.getElementById("camera-wrap"),
+    cameraVideo: document.getElementById("camera-video"),
+    cameraCanvas: document.getElementById("camera-canvas"),
+    flashOverlay: document.getElementById("flash-overlay"),
+
+    btnToggleScan: document.getElementById("btn-toggle-scan"),
+    btnRegister: document.getElementById("btn-register"),
+    btnTestAlert: document.getElementById("btn-test-alert"),
+    btnToggleList: document.getElementById("btn-toggle-list"),
+    alertMsg: document.getElementById("alert-msg"),
+
+    manualRegisterSection: document.getElementById("manual-register-section"),
+    selectManualClass: document.getElementById("select-manual-class"),
+    btnConfirmManualRegister: document.getElementById("btn-confirm-manual-register"),
+    btnCancelManualRegister: document.getElementById("btn-cancel-manual-register"),
+
+    btnRecordGps: document.getElementById("btn-record-gps"),
+    btnRetakeGps: document.getElementById("btn-retake-gps"),
+    gpsError: document.getElementById("gps-error"),
+    gpsResult: document.getElementById("gps-result"),
+
+    listSection: document.getElementById("list-section"),
+    summaryCount: document.getElementById("summary-count"),
+    listEmpty: document.getElementById("list-empty"),
+    detectList: document.getElementById("detect-list")
+  };
+
+  var ctx = el.cameraCanvas.getContext("2d");
+
+  function showMsg(node, text, cls) {
+    node.textContent = text;
+    node.className = "msg " + (cls || "error");
+    node.style.display = text ? "block" : "none";
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function classLabel(idx) {
+    if (contract.classLabels && contract.classLabels[idx]) return contract.classLabels[idx];
+    if (contract.classNames && contract.classNames[idx]) return contract.classNames[idx];
+    return "未知類別#" + idx;
+  }
+
+  function classKey(idx) {
+    if (contract.classNames && contract.classNames[idx]) return contract.classNames[idx];
+    return "cls_" + idx;
+  }
+
+  // =========================================================
+  // 手動登記下拉選單(依 contract 12 類建立,contract 載入後會重建一次)
+  // =========================================================
+  function rebuildManualClassSelect() {
+    el.selectManualClass.innerHTML = "";
+    var names = contract.classNames || [];
+    for (var i = 0; i < names.length; i++) {
+      var opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = classLabel(i);
+      el.selectManualClass.appendChild(opt);
+    }
+  }
+  rebuildManualClassSelect();
+
+  // =========================================================
+  // 模型契約(model.json)載入:讀不到就用 FALLBACK_CONTRACT,不讓整頁壞掉
+  // =========================================================
+  function loadContract() {
+    return fetch("./models/model.json", { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("model.json HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (json) {
+        if (!json || !Array.isArray(json.classNames) || json.classNames.length === 0) {
+          throw new Error("model.json 格式不正確(缺少 classNames)");
+        }
+        // 淺層合併,缺的欄位用 fallback 補上,避免正式 model.json 只填部分欄位就整個壞掉
+        contract = {
+          modelFile: json.modelFile || FALLBACK_CONTRACT.modelFile,
+          imgsz: typeof json.imgsz === "number" && json.imgsz > 0 ? json.imgsz : FALLBACK_CONTRACT.imgsz,
+          inputName: json.inputName || FALLBACK_CONTRACT.inputName,
+          outputName: json.outputName || FALLBACK_CONTRACT.outputName,
+          outputFormat: json.outputFormat || FALLBACK_CONTRACT.outputFormat,
+          confThreshold: typeof json.confThreshold === "number" ? json.confThreshold : FALLBACK_CONTRACT.confThreshold,
+          iouThreshold: typeof json.iouThreshold === "number" ? json.iouThreshold : FALLBACK_CONTRACT.iouThreshold,
+          classNames: json.classNames,
+          classLabels: Array.isArray(json.classLabels) ? json.classLabels : FALLBACK_CONTRACT.classLabels
+        };
+      })
+      .catch(function (err) {
+        // 讀不到/格式不對都退回內建 fallback,不拋出、不擋後續流程
+        contract = FALLBACK_CONTRACT;
+        console.warn("[ghg-scan] 讀取 models/model.json 失敗,使用內建 fallback 契約。", err);
+      })
+      .then(function () {
+        rebuildManualClassSelect();
+      });
+  }
+
+  // =========================================================
+  // onnxruntime-web:動態載入 CDN 腳本(不是 <script src>,才能 catch 失敗優雅降級)
+  // =========================================================
+  function loadOrtScript() {
+    return new Promise(function (resolve, reject) {
+      if (window.ort) { resolve(window.ort); return; }
+      var s = document.createElement("script");
+      s.src = ORT_SCRIPT_URL;
+      s.integrity = ORT_SCRIPT_INTEGRITY;
+      s.crossOrigin = "anonymous";
+      s.async = true;
+      s.onload = function () {
+        if (window.ort) resolve(window.ort);
+        else reject(new Error("onnxruntime-web 已載入但 window.ort 不存在"));
+      };
+      s.onerror = function () {
+        // 涵蓋:離線/CDN 被封鎖,以及 SRI 雜湊不符(檔案被竄改或版本升級忘了同步更新雜湊)
+        reject(new Error("onnxruntime-web CDN 載入失敗(可能離線、被封鎖,或 SRI 雜湊核對不符)"));
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  function updateModelStatusUI() {
+    el.modelStatus.textContent = modelStatusText;
+    el.modelStatus.className = "model-status " + (modelLoaded ? "ready" : "skeleton");
+  }
+
+  // =========================================================
+  // 初始化推論管線:讀契約 → 載 onnxruntime-web → 嘗試載入 ghg.onnx。
+  // 任何一步失敗都優雅降級成「骨架模式」,不影響相機/提醒/登記/清單功能。
+  // =========================================================
+  function initModelPipeline() {
+    modelStatusText = "模型狀態:準備中…";
+    updateModelStatusUI();
+
+    return loadContract()
+      .then(function () {
+        return loadOrtScript();
+      })
+      .then(function (ort) {
+        ortLib = ort;
+        try {
+          ortLib.env.wasm.wasmPaths = ORT_BASE_URL;
+        } catch (e) {
+          // 忽略:少數版本沒有這個設定入口也無妨,預設仍會嘗試從同源相對路徑找 wasm
+        }
+        return ortLib.InferenceSession.create("./models/" + contract.modelFile, {
+          executionProviders: ["wasm"]
+        });
+      })
+      .then(function (createdSession) {
+        session = createdSession;
+        modelLoaded = true;
+        modelStatusText = "模型狀態:已載入 " + contract.modelFile + ",可即時偵測。";
+        updateModelStatusUI();
+      })
+      .catch(function (err) {
+        modelLoaded = false;
+        session = null;
+        modelStatusText =
+          "模型狀態:尚未載入模型(骨架模式)。相機與提醒仍可使用,登記需手動選類別。" +
+          "(" + (err && err.message ? err.message : err) + ")";
+        updateModelStatusUI();
+        console.warn("[ghg-scan] 模型管線初始化未完成,已降級為骨架模式。", err);
+      });
+  }
+
+  // =========================================================
+  // 常駐提示 banner
+  // =========================================================
+  function updateBanner() {
+    var text;
+    if (!cameraReady) {
+      text = "請先按上方「啟用相機」按鈕(iOS 需允許權限)。";
+    } else if (!modelLoaded) {
+      text = "骨架模式:尚未載入模型,無法自動偵測。可按「🔔 測試提醒」驗證提醒路徑,或按「＋ 登記」手動選類別登記。";
+    } else if (!scanning) {
+      text = "相機已就緒,按「▶ 開始掃描」開始即時偵測。";
+    } else {
+      text = "掃描中…偵測到排放源會自動提醒,按「＋ 登記此排放源」記錄下來。";
+    }
+    el.banner.textContent = text;
+  }
+
+  // =========================================================
+  // 相機啟用(需使用者手勢,iOS 才會給相機權限)
+  // =========================================================
+  el.btnEnableCamera.addEventListener("click", function () {
+    if (cameraReady) return;
+    unlockAudio(); // 用這個手勢一併解鎖 WebAudio,供之後非手勢觸發的提醒使用(iOS 限制)
+    el.btnEnableCamera.disabled = true;
+    showMsg(el.cameraMsg, "");
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      el.btnEnableCamera.disabled = false;
+      showMsg(el.cameraMsg, "此瀏覽器不支援相機,無法使用本頁功能。", "error");
+      return;
+    }
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(function (stream) {
+        el.cameraVideo.srcObject = stream;
+        el.cameraVideo.onloadedmetadata = function () {
+          if (cameraReady) return; // 防重入
+          el.cameraVideo.play();
+          cameraReady = true;
+          el.cameraSection.style.display = "block";
+          el.btnEnableCamera.style.display = "none";
+          // 先讓區塊顯示出來(display:block)之後再量尺寸,否則量到 0 → canvas 0x0 → 畫不出東西
+          setupCanvasSize();
+          requestAnimationFrame(tick);
+          updateBanner();
+        };
+      })
+      .catch(function (err) {
+        el.btnEnableCamera.disabled = false;
+        showMsg(
+          el.cameraMsg,
+          "相機無法使用或權限被拒。(" + (err && err.message ? err.message : err) + ")",
+          "error"
+        );
+      });
+  });
+
+  // H1 修正:canvas backing 尺寸必須對齊「.camera-wrap 實際顯示框」的寬高(由 CSS
+  // aspect-ratio:3/4 決定),不能用相機原生畫面比例(videoWidth/videoHeight)去算 h。
+  // 原本 h = w * videoAspect 只有在相機原生剛好是 3:4 才會等於顯示框高度;真實相機多為
+  // 4:3 或 16:9,會讓 canvas backing 尺寸與 CSS 顯示尺寸不一致,導致 canvas 被瀏覽器
+  // 用 CSS 拉伸(等同 object-fit:fill)。而 <video> 是 object-fit:cover,兩者比例一旦
+  // 不同,疊上去的偵測框就會系統性偏移/變形、貼不到物件。
+  // 改成直接量測 wrap 的實際 rect(寬與高都量),讓 canvas backing = 顯示框像素尺寸,
+  // canvas 本身不再被 CSS 縮放,videoPointToCanvas() 的 cover 投影公式才會正確對應。
+  // TODO(模型接入者): 此段目前無真模型可上機驗證,正式模型接上後請用已知位置的物件
+  // 實測框是否貼合,若仍有偏移請優先檢查這裡與 videoPointToCanvas() 是否一致。
+  function setupCanvasSize() {
+    var rect = el.cameraWrap.getBoundingClientRect();
+    var w = Math.round(rect.width);
+    var h = Math.round(rect.height);
+    if (!w || w <= 0 || !h || h <= 0) {
+      // 版面還沒量到尺寸(例如剛 display:block),先用視窗寬度 + 固定 3:4 比例暫代,
+      // 下一幀再重量(與 CSS 的 aspect-ratio:3/4 一致,而非相機原生比例)
+      w = Math.round(Math.min(window.innerWidth || 360, 480));
+      h = Math.round((w * 4) / 3);
+      requestAnimationFrame(setupCanvasSize);
+    }
+    el.cameraCanvas.width = w;
+    el.cameraCanvas.height = h;
+    canvasW = w;
+    canvasH = h;
+  }
+
+  // 轉向/視窗大小改變時重量,避免 canvas 尺寸與畫面不一致
+  window.addEventListener("resize", function () {
+    if (cameraReady) setupCanvasSize();
+  });
+
+  // =========================================================
+  // 主渲染迴圈:每幀清空 canvas 後疊畫最近一次的偵測框(canvas 是透明疊圖層,
+  // 不把 video 畫進 canvas,沿用 ar-measure.html 已驗證、避開 iOS Safari
+  // drawImage(video,...) 常見例外的作法)。實際推論在 maybeRunInference()
+  // 內非同步進行,節流到約每 INFER_INTERVAL_MS 一次,避免卡頓。
+  // =========================================================
+  function tick(now) {
+    if (cameraReady) {
+      ctx.clearRect(0, 0, canvasW, canvasH);
+      maybeRunInference(now || performance.now());
+      if (scanning && modelLoaded) drawDetections(lastDetections);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function maybeRunInference(now) {
+    if (!scanning || !modelLoaded || !cameraReady || inferencing) return;
+    if (now - lastInferAt < INFER_INTERVAL_MS) return;
+    lastInferAt = now;
+    inferencing = true;
+    runInferenceOnce()
+      .catch(function (err) {
+        console.warn("[ghg-scan] 單次推論失敗,略過這一幀。", err);
+      })
+      .then(function () {
+        inferencing = false;
+      });
+  }
+
+  el.btnToggleScan.addEventListener("click", function () {
+    unlockAudio();
+    if (!cameraReady) return;
+    scanning = !scanning;
+    el.btnToggleScan.textContent = scanning ? "⏸ 停止掃描" : "▶ 開始掃描";
+    if (!scanning) {
+      lastDetections = [];
+      ctx.clearRect(0, 0, canvasW, canvasH);
+    }
+    updateBanner();
+  });
+
+  // =========================================================
+  // Letterbox 前處理:把 video 原生畫面等比縮放置中貼進 imgsz x imgsz 的畫布,
+  // 空白處補灰(114,114,114),是 YOLO 系列訓練/推論常見的前處理方式。
+  // =========================================================
+  function letterboxToImgsz(video, imgsz) {
+    var nativeW = video.videoWidth;
+    var nativeH = video.videoHeight;
+    var scale = Math.min(imgsz / nativeW, imgsz / nativeH);
+    var newW = Math.max(1, Math.round(nativeW * scale));
+    var newH = Math.max(1, Math.round(nativeH * scale));
+    var padX = Math.floor((imgsz - newW) / 2);
+    var padY = Math.floor((imgsz - newH) / 2);
+
+    var off = document.createElement("canvas");
+    off.width = imgsz;
+    off.height = imgsz;
+    var octx = off.getContext("2d");
+    octx.fillStyle = "rgb(114,114,114)";
+    octx.fillRect(0, 0, imgsz, imgsz);
+    octx.drawImage(video, 0, 0, nativeW, nativeH, padX, padY, newW, newH);
+
+    return { canvas: off, ctx: octx, scale: scale, padX: padX, padY: padY, nativeW: nativeW, nativeH: nativeH };
+  }
+
+  // 正規化並轉成 NCHW Float32Array([1,3,imgsz,imgsz]),數值 0~1。
+  function imageDataToTensor(octx, imgsz) {
+    var imgData = octx.getImageData(0, 0, imgsz, imgsz).data; // RGBA
+    var size = imgsz * imgsz;
+    var input = new Float32Array(size * 3);
+    for (var i = 0; i < size; i++) {
+      input[i] = imgData[i * 4] / 255; // R plane
+      input[size + i] = imgData[i * 4 + 1] / 255; // G plane
+      input[2 * size + i] = imgData[i * 4 + 2] / 255; // B plane
+    }
+    return input;
+  }
+
+  // =========================================================
+  // 後處理:解析輸出張量 → 逐類別 NMS → 座標轉回 video 原生像素空間。
+  //
+  // TODO(模型接入者): 這裡假設 Ultralytics 預設匯出格式——單一輸出張量,
+  // dims 為 [1, 4+nc, num_anchors] 或 [1, num_anchors, 4+nc](兩種都會自動判斷),
+  // box 是 xywh(imgsz 像素座標),類別分數已經是 0~1(不用再 sigmoid 一次)。
+  // 換上正式 ghg.onnx 後,請用一張已知答案的測試圖核對這裡解析出來的框/信心
+  // 是否合理;如果格式不同,只需要調整這個函式,不影響其他前端邏輯。
+  // =========================================================
+  function parseYoloOutput(outputTensor, nc, letterboxInfo) {
+    var dims = outputTensor.dims;
+    var data = outputTensor.data;
+    var predLen = 4 + nc;
+
+    var dimsNoBatch = dims.length > 2 ? dims.slice(dims.length - 2) : dims;
+    var channelsFirst = dimsNoBatch[0] === predLen;
+    var numAnchors = channelsFirst ? dimsNoBatch[1] : dimsNoBatch[0];
+
+    function getVal(channel, anchor) {
+      return channelsFirst ? data[channel * numAnchors + anchor] : data[anchor * predLen + channel];
+    }
+
+    var byClass = {}; // clsIndex -> array of { x1,y1,x2,y2,conf }
+
+    for (var a = 0; a < numAnchors; a++) {
+      var bestConf = -1;
+      var bestCls = -1;
+      for (var c = 0; c < nc; c++) {
+        var score = getVal(4 + c, a);
+        if (score > bestConf) {
+          bestConf = score;
+          bestCls = c;
+        }
+      }
+      if (bestConf < contract.confThreshold) continue;
+
+      var cx = getVal(0, a);
+      var cy = getVal(1, a);
+      var w = getVal(2, a);
+      var h = getVal(3, a);
+      var x1 = cx - w / 2;
+      var y1 = cy - h / 2;
+      var x2 = cx + w / 2;
+      var y2 = cy + h / 2;
+
+      if (!byClass[bestCls]) byClass[bestCls] = [];
+      byClass[bestCls].push({ x1: x1, y1: y1, x2: x2, y2: y2, conf: bestConf, cls: bestCls });
+    }
+
+    var kept = [];
+    Object.keys(byClass).forEach(function (clsKeyStr) {
+      var boxes = byClass[clsKeyStr];
+      var afterNms = nms(boxes, contract.iouThreshold);
+      kept = kept.concat(afterNms);
+    });
+
+    // 座標從 imgsz-letterbox 空間轉回 video 原生像素空間
+    var scale = letterboxInfo.scale;
+    var padX = letterboxInfo.padX;
+    var padY = letterboxInfo.padY;
+    var nativeW = letterboxInfo.nativeW;
+    var nativeH = letterboxInfo.nativeH;
+
+    return kept.map(function (b) {
+      var vx1 = clamp((b.x1 - padX) / scale, 0, nativeW);
+      var vy1 = clamp((b.y1 - padY) / scale, 0, nativeH);
+      var vx2 = clamp((b.x2 - padX) / scale, 0, nativeW);
+      var vy2 = clamp((b.y2 - padY) / scale, 0, nativeH);
+      return { clsIndex: b.cls, confidence: b.conf, x1: vx1, y1: vy1, x2: vx2, y2: vy2 };
+    });
+  }
+
+  function iou(a, b) {
+    var x1 = Math.max(a.x1, b.x1);
+    var y1 = Math.max(a.y1, b.y1);
+    var x2 = Math.min(a.x2, b.x2);
+    var y2 = Math.min(a.y2, b.y2);
+    var interW = Math.max(0, x2 - x1);
+    var interH = Math.max(0, y2 - y1);
+    var inter = interW * interH;
+    var areaA = Math.max(0, a.x2 - a.x1) * Math.max(0, a.y2 - a.y1);
+    var areaB = Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
+    var union = areaA + areaB - inter;
+    return union <= 0 ? 0 : inter / union;
+  }
+
+  function nms(boxes, iouThreshold) {
+    var sorted = boxes.slice().sort(function (a, b) { return b.conf - a.conf; });
+    var kept = [];
+    for (var i = 0; i < sorted.length; i++) {
+      var candidate = sorted[i];
+      var overlaps = false;
+      for (var j = 0; j < kept.length; j++) {
+        if (iou(candidate, kept[j]) > iouThreshold) { overlaps = true; break; }
+      }
+      if (!overlaps) kept.push(candidate);
+    }
+    return kept;
+  }
+
+  function runInferenceOnce() {
+    var imgsz = contract.imgsz;
+    var lb = letterboxToImgsz(el.cameraVideo, imgsz);
+    var inputData = imageDataToTensor(lb.ctx, imgsz);
+    var tensor = new ortLib.Tensor("float32", inputData, [1, 3, imgsz, imgsz]);
+    var feeds = {};
+    feeds[contract.inputName] = tensor;
+
+    return session.run(feeds).then(function (results) {
+      var outputTensor = results[contract.outputName] || results[Object.keys(results)[0]];
+      var nc = contract.classNames.length;
+      var parsed = parseYoloOutput(outputTensor, nc, lb);
+      lastDetections = parsed;
+
+      // 對每個偵測到的類別各自做提醒 debounce;同一幀可能有多筆通過 debounce,
+      // 先收集起來,迴圈結束後彙整成單一則訊息一次顯示(L3 修正,避免互相覆蓋)
+      var alerted = [];
+      for (var i = 0; i < parsed.length; i++) {
+        var result = maybeAlertDetection(parsed[i]);
+        if (result) alerted.push(result);
+      }
+      if (alerted.length > 0) showAlertMessage(formatAlertMessage(alerted));
+    });
+  }
+
+  // =========================================================
+  // 座標映射:video 原生像素空間 → 顯示用 canvas 空間。
+  // video 用 object-fit:cover 顯示(等比縮放後置中裁切);canvas backing 尺寸
+  // 現在由 setupCanvasSize() 對齊「顯示框實際像素尺寸」(見該函式內 H1 修正說明),
+  // 所以這裡用「cover」的縮放/置中公式(coverScale = Math.max(...))會與瀏覽器實際
+  // 呈現 video 的方式一致,而不是單純線性縮放,框才會疊對位置。
+  // 整條鏈路:letterbox 還原(imgsz 空間 → video 原生像素,見 parseYoloOutput 內的
+  // 反轉換)→ 這裡再從 video 原生像素 → canvas 顯示空間,兩段必須合起來驗證。
+  // TODO(模型接入者): 目前無真模型無法上機驗證,正式模型接上後請用已知位置的物件
+  // 核對框是否貼合。
+  // =========================================================
+  function videoPointToCanvas(vx, vy) {
+    var nativeW = el.cameraVideo.videoWidth || 1;
+    var nativeH = el.cameraVideo.videoHeight || 1;
+    var coverScale = Math.max(canvasW / nativeW, canvasH / nativeH);
+    var renderedW = nativeW * coverScale;
+    var renderedH = nativeH * coverScale;
+    var offsetX = (canvasW - renderedW) / 2;
+    var offsetY = (canvasH - renderedH) / 2;
+    return { x: vx * coverScale + offsetX, y: vy * coverScale + offsetY };
+  }
+
+  function drawDetections(dets) {
+    if (!dets || dets.length === 0) return;
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.font = "bold 13px sans-serif";
+    ctx.textBaseline = "top";
+    for (var i = 0; i < dets.length; i++) {
+      var d = dets[i];
+      var p1 = videoPointToCanvas(d.x1, d.y1);
+      var p2 = videoPointToCanvas(d.x2, d.y2);
+      var x = Math.min(p1.x, p2.x);
+      var y = Math.min(p1.y, p2.y);
+      var w = Math.abs(p2.x - p1.x);
+      var h = Math.abs(p2.y - p1.y);
+
+      ctx.strokeStyle = "rgba(230,81,0,0.95)";
+      ctx.strokeRect(x, y, w, h);
+
+      var label = classLabel(d.clsIndex) + " " + Math.round(d.confidence * 100) + "%";
+      var textW = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(230,81,0,0.95)";
+      ctx.fillRect(x, Math.max(0, y - 18), textW + 8, 18);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, x + 4, Math.max(0, y - 17));
+    }
+    ctx.restore();
+  }
+
+  function getTopDetection() {
+    if (!lastDetections || lastDetections.length === 0) return null;
+    var best = null;
+    for (var i = 0; i < lastDetections.length; i++) {
+      if (!best || lastDetections[i].confidence > best.confidence) best = lastDetections[i];
+    }
+    return best;
+  }
+
+  // =========================================================
+  // 提醒:navigator.vibrate() 特徵偵測(Android 有 → 震動);
+  // 沒有的話(iOS Safari)後備走 WebAudio 短提示音 + 畫面紅框閃爍。
+  // 兩條路都做 debounce(同一類別 3 秒內不重複),避免連續狂震/狂響。
+  // =========================================================
+  function unlockAudio() {
+    // 在使用者手勢(按鈕 click)內建立/喚醒 AudioContext,供之後非手勢觸發的
+    // 自動偵測提醒使用——iOS Safari 的 WebAudio 自動播放限制只認「手勢內建立」這件事,
+    // 之後從 rAF/timer 呼叫同一個已解鎖的 context 仍可正常出聲。
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) {
+      // 忽略:此裝置/瀏覽器不支援 WebAudio,playBeep() 內會再次防呆
+    }
+  }
+
+  function playBeep() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.15;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.25);
+    } catch (e) {
+      // 忽略:此裝置/瀏覽器不支援 WebAudio,提醒退回只剩畫面閃爍
+    }
+  }
+
+  function triggerFlash() {
+    el.flashOverlay.classList.remove("active");
+    // 強制 reflow 讓 CSS animation 能重新從頭播放(連續觸發也看得到閃爍)
+    void el.flashOverlay.offsetWidth;
+    el.flashOverlay.classList.add("active");
+  }
+
+  function showAlertMessage(text) {
+    showMsg(el.alertMsg, text, "error");
+    if (alertMsgTimer) clearTimeout(alertMsgTimer);
+    alertMsgTimer = setTimeout(function () {
+      showMsg(el.alertMsg, "");
+    }, 4000);
+  }
+
+  // L3 修正:triggerAlert() 不再自己呼叫 showAlertMessage()——同一幀若有多個類別
+  // 同時通過 debounce,個別呼叫會互相覆蓋 alertMsg,畫面只看得到最後一筆。改成
+  // triggerAlert() 只負責「debounce 判斷 + 震動/聲音+閃爍」,通過的話回傳
+  // { label, confidence } 給呼叫端收集,由呼叫端(runInferenceOnce 或測試按鈕)
+  // 彙整成單一訊息再顯示一次。震動/beep+閃爍仍是每個通過 debounce 的類別各自觸發,
+  // 不用改(多類別同時罕見連續震動/響鈴可接受)。
+  // debounceKey 用來讓「同一類別」與「測試按鈕」分開各自的節流計時
+  function triggerAlert(debounceKey, label, confidence) {
+    var now = Date.now();
+    if (lastAlertAt[debounceKey] && now - lastAlertAt[debounceKey] < ALERT_DEBOUNCE_MS) return null;
+    lastAlertAt[debounceKey] = now;
+
+    var vibrated = false;
+    if (typeof navigator.vibrate === "function") {
+      // 部分瀏覽器在不支援/被拒絕時仍回傳 false,此時退回聲音+閃爍後備
+      vibrated = !!navigator.vibrate([120, 60, 120]);
+    }
+    if (!vibrated) {
+      playBeep();
+      triggerFlash();
+    }
+    return { label: label, confidence: confidence };
+  }
+
+  // 把一批(可能多筆)通過 debounce 的提醒,彙整成單一則文字訊息,避免互相覆蓋
+  function formatAlertMessage(alerted) {
+    var parts = alerted.map(function (a) {
+      var confText = typeof a.confidence === "number" ? "(信心 " + Math.round(a.confidence * 100) + "%)" : "";
+      return a.label + confText;
+    });
+    return "⚠ 偵測到:" + parts.join("、");
+  }
+
+  function maybeAlertDetection(det) {
+    return triggerAlert(classKey(det.clsIndex), classLabel(det.clsIndex), det.confidence);
+  }
+
+  el.btnTestAlert.addEventListener("click", function () {
+    unlockAudio();
+    var result = triggerAlert("__test__", "測試提醒", null);
+    if (result) showAlertMessage(formatAlertMessage([result]));
+  });
+
+  // =========================================================
+  // 登記排放源:有偵測結果就登記信心最高的那個;沒有(骨架模式/尚未偵測到)
+  // 就打開手動選擇面板,讓使用者從 12 類下拉選一項登記。
+  // =========================================================
+  el.btnRegister.addEventListener("click", function () {
+    var top = getTopDetection();
+    if (top) {
+      registerDetection(top.clsIndex, top.confidence);
+      showAlertMessage("已登記:" + classLabel(top.clsIndex) + "(信心 " + Math.round(top.confidence * 100) + "%)");
+    } else {
+      el.manualRegisterSection.style.display = "block";
+      el.manualRegisterSection.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  });
+
+  el.btnConfirmManualRegister.addEventListener("click", function () {
+    var idx = parseInt(el.selectManualClass.value, 10);
+    if (!isFinite(idx)) return;
+    registerDetection(idx, null);
+    el.manualRegisterSection.style.display = "none";
+    showAlertMessage("已登記:" + classLabel(idx) + "(手動選擇)");
+  });
+
+  el.btnCancelManualRegister.addEventListener("click", function () {
+    el.manualRegisterSection.style.display = "none";
+  });
+
+  function makeDetectionId() {
+    return Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function registerDetection(clsIndex, confidence) {
+    var record = {
+      id: makeDetectionId(),
+      cls: clsIndex,
+      className: classLabel(clsIndex),
+      confidence: typeof confidence === "number" && isFinite(confidence) ? confidence : null,
+      lat: gpsCoord ? gpsCoord.lat : null,
+      lng: gpsCoord ? gpsCoord.lng : null,
+      accuracy: gpsCoord ? gpsCoord.accuracy : null,
+      createdAt: new Date().toISOString()
+    };
+    detections.push(record);
+    saveDetectionsToStorage();
+    renderDetectList();
+  }
+
+  // =========================================================
+  // 清單顯示/隱藏切換
+  // =========================================================
+  el.btnToggleList.addEventListener("click", function () {
+    var showing = el.listSection.style.display !== "none";
+    el.listSection.style.display = showing ? "none" : "block";
+    if (!showing) el.listSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // =========================================================
+  // 記錄位置(GPS)— 單次定位,不使用 watchPosition(不持續追蹤,省電且單純)
+  // =========================================================
+  function handleRecordGps() {
+    showMsg(el.gpsError, "");
+    if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== "function") {
+      showMsg(el.gpsError, "此瀏覽器不支援定位。");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    });
+  }
+
+  function onGpsSuccess(pos) {
+    var lat = pos && pos.coords ? pos.coords.latitude : NaN;
+    var lng = pos && pos.coords ? pos.coords.longitude : NaN;
+    var accuracy = pos && pos.coords ? pos.coords.accuracy : NaN;
+    if (!isFinite(lat) || !isFinite(lng)) {
+      showMsg(el.gpsError, "定位結果異常(緯度/經度非有限數),請重新定位。");
+      return;
+    }
+    gpsCoord = { lat: lat, lng: lng, accuracy: isFinite(accuracy) ? accuracy : null };
+    showMsg(el.gpsError, "");
+    showMsg(
+      el.gpsResult,
+      "已記錄:緯度 " + lat.toFixed(6) + ",經度 " + lng.toFixed(6) +
+        (gpsCoord.accuracy !== null ? "(精度≈" + Math.round(gpsCoord.accuracy) + "公尺)" : "") +
+        "。之後每筆登記都會附上這個座標。",
+      "ok"
+    );
+    el.btnRetakeGps.style.display = "block";
+  }
+
+  function onGpsError(err) {
+    var code = err ? err.code : null;
+    var msg;
+    if (code === 1) {
+      msg = "定位權限被拒,請在瀏覽器/系統設定允許此頁存取位置後再試。";
+    } else if (code === 2 || code === 3) {
+      msg = "暫時取不到位置,請到空曠處或稍後重試。";
+    } else {
+      msg = "定位失敗,請重試。(" + (err && err.message ? err.message : err) + ")";
+    }
+    showMsg(el.gpsError, msg);
+  }
+
+  el.btnRecordGps.addEventListener("click", handleRecordGps);
+  el.btnRetakeGps.addEventListener("click", handleRecordGps);
+
+  // =========================================================
+  // 已登記清單(localStorage,key = "ghgScan.detections")
+  // =========================================================
+  function loadDetectionsFromStorage() {
+    try {
+      var raw = localStorage.getItem(DETECTIONS_STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      // 防呆:過濾掉格式不對的壞資料,不讓整頁掛掉
+      var cleaned = parsed.filter(function (r) {
+        return r && typeof r === "object" && typeof r.id === "string";
+      });
+      if (cleaned.length !== parsed.length) {
+        try {
+          localStorage.setItem(DETECTIONS_STORAGE_KEY, JSON.stringify(cleaned));
+        } catch (e) {
+          // 寫回失敗不影響本次讀取,只是壞資料會留到下次
+        }
+      }
+      return cleaned;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveDetectionsToStorage() {
+    try {
+      localStorage.setItem(DETECTIONS_STORAGE_KEY, JSON.stringify(detections));
+      return true;
+    } catch (e) {
+      showAlertMessage("儲存到本機失敗(可能是瀏覽器儲存空間已滿),這筆登記可能沒存住。");
+      return false;
+    }
+  }
+
+  function deleteDetection(id) {
+    detections = detections.filter(function (r) { return r.id !== id; });
+    saveDetectionsToStorage();
+    renderDetectList();
+  }
+
+  function renderDetectList() {
+    el.summaryCount.textContent = "共 " + detections.length + " 筆";
+    if (detections.length === 0) {
+      el.listEmpty.style.display = "block";
+      el.detectList.innerHTML = "";
+      return;
+    }
+    el.listEmpty.style.display = "none";
+
+    var html = "";
+    for (var i = detections.length - 1; i >= 0; i--) {
+      var r = detections[i];
+      var confText = typeof r.confidence === "number" && isFinite(r.confidence)
+        ? Math.round(r.confidence * 100) + "%"
+        : "手動選擇";
+      var gpsText = "";
+      if (typeof r.lat === "number" && isFinite(r.lat) && typeof r.lng === "number" && isFinite(r.lng)) {
+        gpsText = "GPS:緯度 " + r.lat.toFixed(6) + ",經度 " + r.lng.toFixed(6) +
+          (typeof r.accuracy === "number" && isFinite(r.accuracy) ? "(精度≈" + Math.round(r.accuracy) + "公尺)" : "");
+      }
+      var createdText = "";
+      try {
+        createdText = r.createdAt ? new Date(r.createdAt).toLocaleString("zh-Hant-TW") : "";
+      } catch (e) {
+        createdText = "";
+      }
+
+      html +=
+        '<div class="detect-row">' +
+          '<div class="detect-row-main">' +
+            "<b>" + escapeHtml(r.className || "未知類別") + "</b>" +
+            '<div class="detect-row-sub">信心:' + escapeHtml(confText) + "</div>" +
+            (gpsText ? '<div class="detect-row-sub">' + escapeHtml(gpsText) + "</div>" : "") +
+            (createdText ? '<div class="detect-row-sub" style="color:#999;">登記於 ' + escapeHtml(createdText) + "</div>" : "") +
+          "</div>" +
+          '<div class="detect-row-actions">' +
+            '<button type="button" class="danger" data-action="delete" data-id="' + escapeHtml(r.id) + '">刪除</button>' +
+          "</div>" +
+        "</div>";
+    }
+    el.detectList.innerHTML = html;
+  }
+
+  el.detectList.addEventListener("click", function (e) {
+    var target = e.target;
+    var depth = 0;
+    while (target && target !== el.detectList && depth < 3) {
+      if (target.tagName === "BUTTON" && target.getAttribute("data-action")) break;
+      target = target.parentNode;
+      depth++;
+    }
+    if (!target || target === el.detectList || !target.getAttribute) return;
+    var action = target.getAttribute("data-action");
+    var id = target.getAttribute("data-id");
+    if (!action || !id) return;
+    if (action === "delete") {
+      var ok = window.confirm("確定要刪除這筆登記紀錄嗎?此動作無法復原。");
+      if (!ok) return;
+      deleteDetection(id);
+    }
+  });
+
+  // ---- 初始狀態 ----
+  updateBanner();
+  updateModelStatusUI();
+  detections = loadDetectionsFromStorage();
+  renderDetectList();
+  initModelPipeline();
+
+  // ---- PWA:註冊 Service Worker(離線快取 app shell),失敗不影響主流程 ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      try {
+        navigator.serviceWorker.register("./sw.js").catch(function () {
+          // 註冊失敗只是少了離線快取這個加值功能,不影響相機/推論/提醒/登記主流程
+        });
+      } catch (e) {
+        // 忽略:部分瀏覽器/環境(例如非 HTTPS)可能直接丟例外
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

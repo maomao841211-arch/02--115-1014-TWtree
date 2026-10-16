@@ -1,0 +1,25 @@
+{
+  "name": "校園排放源掃描",
+  "short_name": "排放掃描",
+  "description": "相機掃描校園,YOLO 端上偵測溫室氣體排放源物件,偵測到就提醒並可登記(骨架階段尚未內建正式模型)。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff7f0",
+  "theme_color": "#bf360c",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# YOLO 資料集定義 — 校園溫室氣體排放源掃描
+# 對應「臺北市校園簡易碳盤查表格.xlsx」工作表 2-1 / 2-2 / 2-3(2) / 2-3(3)
+# 註：化糞池(2-3(1)) 埋於地下、相機不可見，未納入偵測類別。
+#
+# 路徑（訓練時依實際位置調整；raw/images/labels 均已 gitignore）
+path: .            # 資料集根目錄
+train: images/train
+val: images/val
+
+# 12 類可見排放源物件
+names:
+  0: gas_stove         # 瓦斯爐（2-1 固定：廚房瓦斯爐）
+  1: boiler            # 熱水鍋爐（2-1 固定）
+  2: generator         # 發電機（2-1 固定：緊急發電機）
+  3: brush_cutter      # 除草機（2-1 固定/2-2 移動：肩背式）
+  4: lpg_cylinder      # 桶裝瓦斯桶 LPG（2-1 固定）
+  5: car               # 汽車（2-2 移動：公務車）
+  6: scooter           # 機車（2-2 移動）
+  7: truck             # 貨車/物流配送車（2-2 移動）
+  8: fire_extinguisher # 滅火器（2-3(2) 逸散：CO2/BC/KBC 外觀合併）
+  9: gas_cylinder      # 實驗室氣體鋼瓶（2-3(2) 逸散）
+  10: ac_outdoor       # 冷氣室外機（2-3(3) 逸散：各冷媒外觀合併）
+  11: fridge           # 冰箱/冷凍櫃（2-3(3) 逸散）
+
+nc: 12

@@ -1,0 +1,3696 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TwTrees 碳盤查</title>
+<meta name="theme-color" content="#1b5e20">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<style>
+  :root {
+    --fg: #1b1b1b;
+    --bg: #f5f7f2;
+    --card: #ffffff;
+    --accent: #2e7d32;
+    --accent-dark: #1b5e20;
+    --warn: #b71c1c;
+    --line: #d9dcd4;
+    --note: #c62828;      /* 說明類小字(淺色底) */
+    --note-dark: #ff8a80; /* 說明類小字(深色底,例如相機畫面上) */
+  }
+  /* 說明類小字統一:紅色、加大、前面加粗體「說明:」(錯誤訊息 .msg.error 另有樣式,不在此列) */
+  .cam-note::before,
+  .section-title small::before,
+  .invert-row .invert-label small::before,
+  #species-note::before,
+  .note-disclaimer::before { content: "說明:"; font-weight: bold; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+  /* 整個 App 固定一個螢幕高度(100dvh),不整頁捲動;分頁內容各自在區塊內處理 */
+  #app {
+    max-width: 480px;
+    margin: 0 auto;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  #tab-host { flex: 1 1 auto; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  .tab-panel { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+  .tab-panel.active { display: flex; }
+  .tab-panel.scroll { overflow-y: auto; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+
+  /* 底部三分頁導覽列 */
+  #tab-nav {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: #fff;
+    border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .tab-btn {
+    margin: 0;
+    border-radius: 0;
+    background: #fff;
+    color: #666;
+    font-size: 0.95rem;
+    min-height: 56px;
+    padding: 6px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    line-height: 1.2;
+    border-top: 3px solid transparent;
+  }
+  .tab-btn .ti { font-size: 1.35rem; }
+  .tab-btn.active { color: var(--accent-dark); border-top-color: var(--accent); background: #eef6ec; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .section-title {
+    font-weight: bold;
+    font-size: 1.05rem;
+    margin: 0 0 10px;
+    color: var(--accent-dark);
+  }
+  .section-title small {
+    display: block;
+    font-weight: normal;
+    color: var(--note);
+    font-size: 0.9rem;
+    margin-top: 2px;
+  }
+  /* 設定頁用可收合區塊,減少一次要看的內容 */
+  details.card { padding: 0 14px; }
+  details.card > summary {
+    font-weight: bold;
+    font-size: 1.05rem;
+    color: var(--accent-dark);
+    cursor: pointer;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    list-style: none;
+  }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::before { content: "▸"; margin-right: 8px; transition: transform 0.15s; }
+  details.card[open] > summary::before { transform: rotate(90deg); }
+  details.card[open] { padding-bottom: 12px; }
+  details.card[open] > summary { margin-bottom: 4px; }
+  button {
+    display: block;
+    width: 100%;
+    font-size: 1.05rem;
+    padding: 13px 10px;
+    margin: 6px 0;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button.secondary { background: #607d8b; }
+  button.danger { background: var(--warn); }
+  button.ghost {
+    background: #eef2ea;
+    color: var(--accent-dark);
+    border: 1px solid var(--line);
+  }
+  button:disabled {
+    background: #b9bdb6;
+    color: #eee;
+    cursor: not-allowed;
+  }
+  button:active:not(:disabled) { filter: brightness(0.9); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .angle-display {
+    text-align: center;
+    font-size: 2.6rem;
+    font-weight: bold;
+    margin: 4px 0 8px;
+    color: var(--accent-dark);
+    letter-spacing: 1px;
+  }
+  .angle-caption { text-align: center; color: var(--note); font-size: 0.95rem; margin-bottom: 6px; }
+  .raw-beta-caption { text-align: center; color: #999; font-size: 0.75rem; margin: -4px 0 6px; }
+  .invert-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin: 8px 0 10px;
+    background: #fafbf8;
+  }
+  .invert-row .invert-label { font-size: 0.92rem; color: #333; }
+  .invert-row .invert-label small { display: block; color: var(--note); font-size: 0.86rem; margin-top: 2px; }
+  .switch { position: relative; display: inline-block; width: 56px; height: 32px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #b9bdb6; border-radius: 32px; transition: background-color 0.15s;
+  }
+  .switch .slider::before {
+    position: absolute; content: ""; height: 26px; width: 26px; left: 3px; bottom: 3px;
+    background-color: #fff; border-radius: 50%; transition: transform 0.15s;
+  }
+  .switch input:checked + .slider { background-color: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(24px); }
+  .cal-live { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 4px 0; }
+  .cal-live .angle-display { margin: 0; font-size: 2.4rem; }
+  .cal-live .angle-caption, .cal-live .raw-beta-caption { margin: 2px 0; }
+  .level-wrap { display: flex; justify-content: center; margin: 0; }
+  .level-circle {
+    width: 84px; height: 84px; border-radius: 50%; border: 3px solid #888; position: relative;
+    background: repeating-linear-gradient(to bottom, #eef2ea 0px, #eef2ea 12px, #e2e7dc 12px, #e2e7dc 13px);
+    overflow: hidden; flex-shrink: 0;
+  }
+  .level-line { position: absolute; top: 50%; left: -10%; width: 120%; height: 3px; background: #d32f2f; transform-origin: 50% 50%; }
+  .level-center-dot { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: #1b1b1b; }
+  label.field-label { display: block; font-size: 0.92rem; margin-bottom: 4px; color: #444; }
+  input[type="number"] {
+    width: 100%; font-size: 1.15rem; padding: 10px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 10px;
+  }
+  select {
+    width: 100%; font-size: 1.1rem; padding: 10px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 10px; background: #fff;
+  }
+  .result-box { background: #eef6ec; border: 1px solid #bcd8b8; border-radius: 10px; padding: 12px; margin-top: 8px; }
+  .result-box .h-main { text-align: center; font-size: 1.6rem; font-weight: bold; color: var(--accent-dark); margin: 2px 0 6px; }
+  .result-box .h-sub { text-align: center; font-size: 0.92rem; color: #444; margin: 2px 0; }
+  .msg { font-size: 0.88rem; padding: 10px; border-radius: 8px; margin-top: 8px; }
+  .msg.error { background: #fdecea; color: var(--warn); border: 1px solid #f5c6cb; }
+  .msg.info { background: #eef2fb; color: #1a3a6b; border: 1px solid #c8d6ef; }
+  .msg.ok { background: #eef6ec; color: var(--accent-dark); border: 1px solid #bcd8b8; }
+
+  /* ===== 量測分頁:相機取景(上)+ 精簡操作區(下) ===== */
+  #camera-section { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* 寬度鎖 100%、高度可被壓縮:只會上下裁切,不會左右裁切,
+     所以 canvasW 仍等於整個影像寬度(DBH 的 f_px 換算不受影響)。 */
+  .camera-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: #000;
+    overflow: hidden;
+  }
+  .camera-wrap video {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000;
+    z-index: 1;
+  }
+  /* 快照層:拍攝瞬間把影格畫進來,疊在 video 上、拖線 canvas 下(同樣的 cover 座標系) */
+  .camera-wrap canvas#snap-canvas { z-index: 2; pointer-events: none; }
+  .camera-wrap canvas#camera-canvas { z-index: 3; }
+  #shutter-flash { position: absolute; inset: 0; z-index: 5; background: #fff; opacity: 0; pointer-events: none; }
+  #shutter-flash.flash { animation: shutterflash 0.4s ease-out; }
+  @keyframes shutterflash { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+  .freeze-label {
+    background: #ffd600; color: #111; font-weight: bold; font-size: 0.95rem; text-align: center;
+    padding: 8px 8px; border-radius: 8px; border: 2px solid #000; line-height: 1.35;
+  }
+  .dbh-overlay {
+    position: absolute; right: 8px; top: 78px; /* 實際 top 由 updateMeasureView 依 cam-top 高度設定 */ z-index: 4; pointer-events: none; /* 移到右上(凍結標籤下方),避免遮住底端拖曳把手 */
+    background: rgba(0, 0, 0, 0.62); color: #ffd600; border-radius: 10px; padding: 4px 12px;
+    font-size: 1.9rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  .camera-wrap canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none;
+    z-index: 2;
+  }
+  .cam-top {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 4;
+    padding: 6px; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
+  }
+  .banner {
+    background: rgba(27, 94, 32, 0.88);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: bold;
+    text-align: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    line-height: 1.35;
+  }
+  .cal-hint {
+    pointer-events: auto;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: rgba(183, 28, 28, 0.92); color: #fff; border-radius: 8px;
+    padding: 2px 4px 2px 10px; font-size: 0.85rem; font-weight: bold;
+  }
+  .cal-hint button {
+    width: auto; margin: 0; padding: 8px 12px; min-height: 44px; font-size: 0.9rem;
+    background: #fff; color: var(--warn);
+  }
+  .angle-overlay {
+    position: absolute; left: 8px; bottom: 8px; z-index: 3; pointer-events: none;
+    background: rgba(0, 0, 0, 0.5); border-radius: 10px; padding: 2px 12px 4px; color: #fff;
+  }
+  .angle-overlay .angle-display {
+    font-size: 2.4rem; color: #fff; margin: 0; text-align: left; text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  }
+  .angle-overlay .angle-caption { color: var(--note-dark); font-size: 0.85rem; margin: 0; text-align: left; }
+  .cam-fallback {
+    position: absolute; left: 0; right: 0; top: 45%; z-index: 2; text-align: center; color: var(--note-dark);
+    font-size: 1.05rem; padding: 0 20px; pointer-events: none;
+  }
+  .cam-overlay {
+    position: absolute; inset: 0; z-index: 6; background: rgba(0, 0, 0, 0.74); color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 20px; text-align: center; overflow-y: auto;
+  }
+  .cam-overlay .ov-title { font-size: 1.3rem; font-weight: bold; }
+  .cam-overlay .ov-sub { font-size: 0.88rem; opacity: 0.92; line-height: 1.5; }
+  .cam-overlay button { max-width: 320px; min-height: 52px; }
+  .cam-overlay .msg { max-width: 320px; text-align: left; }
+
+  #measure-controls {
+    flex: 1 0 auto;
+    max-height: 56%;
+    overflow-y: auto;
+    background: var(--card);
+    border-top: 1px solid var(--line);
+    padding: 6px 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #measure-controls button { margin: 0; min-height: 44px; padding: 8px 10px; }
+  #measure-controls input[type="number"],
+  #measure-controls input[type="text"],
+  #measure-controls select { margin-bottom: 0; min-height: 44px; padding: 6px 8px; font-size: 1.1rem; }
+  #measure-controls .msg { margin-top: 0; padding: 6px 8px; font-size: 0.82rem; }
+  #measure-controls .result-box { margin-top: 0; padding: 6px 8px; }
+  #measure-controls .result-box .h-main { font-size: 1.25rem; margin: 0 0 2px; }
+  #measure-controls .result-box .h-sub { font-size: 0.8rem; margin: 1px 0; }
+  #measure-controls label.field-label { font-size: 0.78rem; margin-bottom: 2px; color: #555; }
+  .step-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: 0 0 auto; }
+  #measure-controls .step-btn {
+    background: #eef2ea; color: var(--accent-dark); border: 1px solid var(--line); font-size: 1rem;
+  }
+  #measure-controls .step-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  /* 凍結胸徑後第一次按鎖定 → 該鎖定鈕閃爍,等第二次按下 */
+  #measure-controls button.blink { animation: lockblink 0.7s ease-in-out infinite; outline: 3px solid #ff6f00; outline-offset: 1px; }
+  @keyframes lockblink {
+    0%, 100% { background: var(--accent); filter: none; }
+    50% { background: #ff9800; filter: brightness(1.15); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #measure-controls button.blink { animation: none; background: #ff9800; color: #1b1b1b; outline: 4px solid #e65100; }
+  }
+  /* 所有需要使用者輸入的欄位統一用橘色外框(開關 checkbox/radio 不在此限) */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea {
+    border: 2px solid #f08c00;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #e65100;
+    box-shadow: 0 0 0 4px rgba(240, 140, 0, 0.35);
+  }
+  .step-panel { display: none; }
+  .step-panel.active { display: block; }
+  .step-panel > * + * { margin-top: 6px; }
+  .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row > button { flex: 1; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .capture-line { text-align: center; font-size: 0.88rem; color: #333; }
+  .capture-line b { font-size: 1.1rem; color: var(--accent-dark); }
+  .cam-note { font-size: 0.92rem; color: var(--note); margin-top: 6px; line-height: 1.5; }
+  .fov-status {
+    font-size: 0.85rem; color: #333; background: #fafbf8; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin: 8px 0;
+  }
+  .dbh-readout { text-align: center; font-size: 0.95rem; color: var(--accent-dark); font-weight: bold; margin: 2px 0; }
+  .dbh-readout small { display: block; color: #555; font-weight: normal; font-size: 0.8rem; margin-top: 2px; }
+  #btn-retake-gps { display: none !important; } /* 重新定位改由「記錄位置」鈕本身負責(同一個 handler) */
+  #gps-result-box .h-sub { display: inline-block; font-size: 0.74rem; margin: 0 8px 0 0; text-align: left; }
+  details.mini > summary { font-size: 0.8rem; color: #555; cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+  details.mini .h-sub { text-align: left; }
+  #species-note { font-size: 0.88rem; color: var(--note); margin: 0 0 4px; line-height: 1.4; }
+
+  /* ===== 清單分頁 ===== */
+  #tab-list { padding: 10px 12px; }
+  #summary-section { flex: 0 0 auto; }
+  #tree-list-section { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; margin-bottom: 0; }
+
+  /* ===== 設定分頁 ===== */
+  .help-list { margin: 4px 0 0; padding-left: 20px; font-size: 0.92rem; line-height: 1.7; color: #333; }
+  .cal-time { font-size: 0.85rem; color: #555; text-align: center; margin: 4px 0; }
+  .doc-text { font-size: 0.82rem; color: #555; line-height: 1.6; }
+  .doc-text p { margin: 4px 0; }
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    background: rgba(27, 94, 32, 0.96); color: #fff; padding: 10px 18px; border-radius: 22px;
+    font-weight: bold; z-index: 10; display: none; max-width: 90%; text-align: center;
+  }
+  hr.sep { border: none; border-top: 1px dashed var(--line); margin: 14px 0; }
+  input[type="text"] {
+    width: 100%; font-size: 1.1rem; padding: 10px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 10px;
+  }
+  .summary-box { background: #eef6ec; border: 1px solid #bcd8b8; border-radius: 10px; padding: 14px; text-align: center; }
+  .summary-box .summary-total { font-size: 1.8rem; font-weight: bold; color: var(--accent-dark); }
+  .summary-box .summary-count { font-size: 0.95rem; color: #444; margin-top: 4px; }
+  .tree-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .tree-row:last-child { border-bottom: none; }
+  .tree-row-main { flex: 1; font-size: 0.92rem; color: #333; min-width: 0; }
+  .tree-row-main b { font-size: 1rem; color: var(--accent-dark); word-break: break-word; }
+  .tree-row-sub { font-size: 0.82rem; color: #666; margin-top: 2px; word-break: break-word; }
+  .tree-row-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .tree-row-actions button {
+    width: auto;
+    margin: 0;
+    padding: 8px 12px;
+    min-height: 44px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  /* ===== 方向遮罩(橫向時蓋住校正區/取景區) ===== */
+  .orient-mask {
+    display: none; position: absolute; inset: 0; z-index: 9;
+    background: rgba(183, 28, 28, 0.94); color: #fff; text-align: center;
+    flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 8px 14px; font-weight: bold; font-size: 1.05rem; line-height: 1.4; border-radius: inherit;
+  }
+  .orient-mask .om-icon { font-size: 1.8rem; line-height: 1; }
+  .orient-mask .om-sub { font-size: 0.8rem; font-weight: normal; opacity: 0.95; }
+  .cal-area { position: relative; }
+  .cal-area.masked { min-height: 150px; border-radius: 10px; overflow: hidden; }
+  .msg.warn { background: #fff8e1; color: #7a4b00; border: 1px solid #ffe08a; font-weight: bold; }
+  .cal-warn { color: var(--note); font-weight: bold; font-size: 1rem; line-height: 1.5; margin: 6px 0 4px; text-align: center; }
+  .cal-hint.amber { background: rgba(230, 126, 0, 0.94); }
+  .cal-hint.amber button { color: #a85500; }
+
+  /* ===== 鎖定成功回饋 ===== */
+  #lock-flash {
+    display: none; position: absolute; left: 50%; top: 50%; z-index: 8; pointer-events: none;
+    transform: translate(-50%, -50%); white-space: nowrap;
+    font-size: 2.4rem; font-weight: bold; color: #69f0ae;
+    background: rgba(0, 0, 0, 0.6); border-radius: 14px; padding: 8px 20px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+  #lock-flash.show { display: block; animation: lockflash 1.5s ease-in-out forwards; }
+  @keyframes lockflash {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+    18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    72% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #lock-flash.show { animation: none; opacity: 1; }
+  }
+  #measure-controls button.locked {
+    background: #b9bdb6; color: #263238; font-size: 0.92rem; line-height: 1.25; white-space: normal;
+  }
+  #measure-controls button.locked:disabled { background: #e3e5e1; color: #8a8f88; opacity: 0.6; border: 2px dashed #9aa097; }
+  .capture-line b.locked-val { font-size: 1.5rem; color: #1b5e20; }
+
+  /* ===== 眼高:用身高換算 ===== */
+  .eye-row { display: flex; gap: 6px; align-items: stretch; }
+  .eye-row input { flex: 1 1 auto; min-width: 0; }
+  #measure-controls button.mini-btn {
+    width: auto; flex: 0 0 auto; min-height: 44px; padding: 4px 8px; font-size: 0.8rem; line-height: 1.2; white-space: nowrap;
+  }
+  .eye-convert { display: none; border: 1px dashed var(--line); border-radius: 10px; padding: 6px 8px; background: #fafbf8; }
+  .eye-convert.open { display: block; }
+  .eye-convert > * + * { margin-top: 6px; }
+
+  /* ===== 示意動畫(inline SVG) ===== */
+  details.demo > summary {
+    cursor: pointer; font-size: 0.9rem; font-weight: bold; color: var(--accent-dark);
+    min-height: 36px; display: flex; align-items: center; list-style: none;
+  }
+  details.demo > summary::-webkit-details-marker { display: none; }
+  details.demo > summary::before { content: "\25B8"; margin-right: 6px; transition: transform 0.15s; }
+  details.demo[open] > summary::before { transform: rotate(90deg); }
+  svg.demo-svg { display: block; width: 100%; max-height: 190px; border-radius: 10px; border: 1px solid var(--line); }
+  .demo-svg text { font-family: inherit; }
+  /* 預設(含 prefers-reduced-motion)= 靜態最終畫面;只有允許動畫時才套用 keyframes */
+  @media (prefers-reduced-motion: no-preference) {
+    .cal-demo .cd-finger { animation: cdFinger 6s ease-in-out infinite; }
+    .cal-demo .cd-ripple { animation: cdRipple 6s ease-out infinite; transform-origin: 74px 99px; }
+    .cal-demo .cd-badge { animation: cdBadge 6s ease-out infinite; }
+    .cal-demo .cd-step1 { animation: cdStep1 6s linear infinite; }
+    .cal-demo .cd-step2 { animation: cdStep2 6s linear infinite; }
+    .cal-demo .cd-step3 { animation: cdStep3 6s linear infinite; }
+    .tree-demo .td-base { stroke-dasharray: 1; animation: tdBase 9s ease-in-out infinite; }
+    .tree-demo .td-top { stroke-dasharray: 1; animation: tdTop 9s ease-in-out infinite; }
+    .tree-demo .td-lab-base { animation: tdLabBase 9s linear infinite; }
+    .tree-demo .td-lab-top { animation: tdLabTop 9s linear infinite; }
+    .tree-demo .td-final { animation: tdFinal 9s linear infinite; }
+  }
+  @keyframes cdFinger {
+    0%, 28% { opacity: 0; transform: translate(70px, 55px); }
+    40% { opacity: 1; transform: translate(0, 0); }
+    46% { opacity: 1; transform: translate(0, 0) scale(0.85); }
+    52% { opacity: 1; transform: translate(0, 0) scale(1); }
+    66%, 100% { opacity: 0; transform: translate(0, 0); }
+  }
+  @keyframes cdRipple { 0%, 44% { opacity: 0; transform: scale(0.4); } 48% { opacity: 0.9; transform: scale(0.6); } 66%, 100% { opacity: 0; transform: scale(2); } }
+  @keyframes cdBadge { 0%, 50% { opacity: 0; } 58%, 94% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes cdStep1 { 0% { opacity: 0; } 6%, 100% { opacity: 1; } }
+  @keyframes cdStep2 { 0%, 26% { opacity: 0; } 34%, 100% { opacity: 1; } }
+  @keyframes cdStep3 { 0%, 50% { opacity: 0; } 58%, 94% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes tdBase { 0% { stroke-dashoffset: 1; opacity: 1; } 18%, 34% { stroke-dashoffset: 0; opacity: 1; } 40%, 100% { stroke-dashoffset: 0; opacity: 0.35; } }
+  @keyframes tdTop { 0%, 38% { stroke-dashoffset: 1; opacity: 1; } 56%, 100% { stroke-dashoffset: 0; opacity: 1; } }
+  @keyframes tdLabBase { 0%, 14% { opacity: 0; } 22%, 100% { opacity: 1; } }
+  @keyframes tdLabTop { 0%, 50% { opacity: 0; } 58%, 100% { opacity: 1; } }
+  @keyframes tdFinal { 0%, 68% { opacity: 0; } 78%, 94% { opacity: 1; } 100% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <main id="tab-host">
+
+    <!-- ===================== 分頁 1:量測(預設) ===================== -->
+    <div class="tab-panel active" id="tab-measure">
+
+      <!-- 相機取景:盡量佔大面積;提示、角度讀數、啟用按鈕都疊在畫面上 -->
+      <section id="camera-section">
+        <div class="camera-wrap" id="camera-wrap">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <canvas id="snap-canvas" style="display:none;"></canvas>
+          <canvas id="camera-canvas"></canvas>
+          <div id="shutter-flash"></div>
+          <div id="lock-flash" aria-live="polite"></div>
+          <div class="orient-mask" id="orient-mask-measure" role="alert">
+            <div class="om-icon">📱</div>
+            <div>請把手機/平板直立拿(螢幕朝向自己),<br>本工具只支援直向量測</div>
+          </div>
+
+          <div class="cam-top" id="cam-top">
+            <div class="freeze-label" id="freeze-label" style="display:none;"></div>
+            <div class="banner" id="banner">請先按畫面中央「啟用相機與感測器」。</div>
+            <div class="cal-hint" id="sensor-hint" style="display:none;">
+              <span>感測器未啟用,無法量角度</span>
+              <button type="button" id="btn-retry-sensor">重試</button>
+            </div>
+            <div class="msg error" id="sensor-hint-msg" style="display:none;margin:0;"></div>
+            <div class="cal-hint" id="cal-hint" style="display:none;">
+              <span id="cal-hint-text">尚未做水平校正,角度會不準</span>
+              <button type="button" id="btn-goto-calibrate">前往校正</button>
+            </div>
+            <div class="msg warn" id="steep-hint" style="display:none;margin:0;">角度太陡(或手機太平),請退後幾步再量</div>
+            <div class="cal-hint amber" id="orient-hint" style="display:none;">
+              <span id="orient-hint-text">方向改變過,建議重新校正</span>
+              <button type="button" id="btn-orient-goto">前往校正</button>
+            </div>
+          </div>
+
+          <div class="dbh-overlay" id="dbh-overlay" style="display:none;"></div>
+          <div class="angle-overlay" id="angle-overlay">
+            <div class="angle-display" id="angle-display">—</div>
+            <div class="angle-caption">仰角(往上為正)</div>
+          </div>
+
+          <div class="cam-fallback" id="cam-fallback" style="display:none;">相機不可用,已切換為純角度模式<br>(仍可鎖定樹基/樹頂;胸徑請手動輸入)</div>
+
+          <!-- 首次使用:啟用相機與感測器(iOS 權限需使用者手勢觸發) -->
+          <div class="cam-overlay" id="enable-section">
+            <div class="ov-title">TwTrees 碳盤查</div>
+            <div class="ov-sub">相機對準樹基與樹頂量樹高、拍樹幹量胸徑,算出單株碳匯並記錄座標。<br>碳匯為文獻公式教學估算,非正式碳權查證依據。</div>
+            <button id="btn-enable-all" type="button">啟用相機與感測器</button>
+            <div id="sensor-error" class="msg error" style="display:none;"></div>
+            <div id="camera-msg" class="msg info" style="display:none;"></div>
+            <div style="font-size:0.75rem;opacity:0.8;margin-top:10px;">臺北市立大學永續環境研究室 開發</div>
+            <!-- 下面兩顆保留原 id 與邏輯(由「啟用相機與感測器」一併觸發),平常不顯示 -->
+            <button id="btn-enable-sensor" type="button" style="display:none;">啟用傾角感測器</button>
+            <button id="btn-enable-camera" type="button" style="display:none;">啟用相機</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 精簡操作區:① 樹高 ② 胸徑 ③ 存檔 在同一塊區域切換 -->
+      <section id="measure-controls">
+        <div class="step-tabs" id="step-tabs">
+          <button type="button" class="step-btn active" id="step-btn-1" data-step="1">① 樹高</button>
+          <button type="button" class="step-btn" id="step-btn-2" data-step="2">② 胸徑</button>
+          <button type="button" class="step-btn" id="step-btn-3" data-step="3">③ 存檔</button>
+        </div>
+
+        <!-- ① 樹高 -->
+        <div class="step-panel active" id="height-section">
+          <div class="fields-row">
+            <div>
+              <label class="field-label" for="input-eye-h">眼高 h(約 身高 − 0.1 m)</label>
+              <div class="eye-row">
+                <input type="number" id="input-eye-h" step="0.01" min="0.01" value="1.5">
+                <button type="button" id="btn-eye-from-height" class="ghost mini-btn">用身高<br>換算</button>
+              </div>
+            </div>
+            <div>
+              <label class="field-label" for="input-manual-dist">距離 D(公尺,選填)</label>
+              <input type="number" id="input-manual-dist" step="0.1" min="0.5" max="100">
+            </div>
+          </div>
+          <div class="eye-convert" id="eye-convert">
+            <label class="field-label" for="input-body-h">你的身高(公分或公尺都可,例:165 或 1.65)</label>
+            <div class="eye-row">
+              <input type="number" id="input-body-h" step="any" min="0" placeholder="例如 165">
+              <button type="button" id="btn-eye-convert-ok" class="mini-btn">填入</button>
+              <button type="button" id="btn-eye-convert-cancel" class="ghost mini-btn">取消</button>
+            </div>
+            <div id="eye-convert-msg" class="msg error" style="display:none;"></div>
+          </div>
+          <div class="cam-note" style="margin-top:0;">建議實測(皮尺或步伐×步幅),樹高與胸徑會準很多;留空則由樹基俯角推算,誤差可能很大。</div>
+          <div class="btn-row">
+            <button id="btn-lock-base" type="button" disabled>鎖定樹基</button>
+            <button id="btn-lock-top" type="button" disabled>鎖定樹頂</button>
+          </div>
+          <div class="capture-line">樹基 <b id="base-value">未擷取</b>・樹頂 <b id="top-value">未擷取</b></div>
+          <div id="base-msg" class="msg error" style="display:none;"></div>
+          <div id="height-error" class="msg error" style="display:none;"></div>
+          <div id="height-info" class="msg info" style="display:none;"></div>
+          <div id="height-result-box" class="result-box" style="display:none;">
+            <div class="h-main" id="result-h">-- m</div>
+            <div class="h-sub" id="result-h-range"></div>
+            <div class="h-sub" id="result-d"></div>
+          </div>
+          <details class="demo" id="height-demo">
+            <summary>看示意:怎麼量樹高</summary>
+            <svg class="demo-svg tree-demo" viewBox="0 0 240 160" role="img" aria-label="樹高示意:先對準樹基鎖定,再對準樹頂鎖定,算出樹高">
+              <rect width="240" height="160" fill="#f3f8ef"/>
+              <rect y="140" width="240" height="20" fill="#cfd8cc"/>
+              <rect x="186" y="68" width="10" height="72" fill="#8d6e63" stroke="#4e342e" stroke-width="1.2"/>
+              <circle cx="191" cy="46" r="24" fill="#66bb6a" stroke="#2e7d32" stroke-width="1.5"/>
+              <circle cx="38" cy="88" r="7" fill="#ffcc80" stroke="#263238" stroke-width="1.5"/>
+              <path d="M38 95 V122 M38 122 L30 140 M38 122 L46 140 M38 103 L50 93" stroke="#263238" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+              <rect x="50" y="82" width="6" height="14" rx="1.5" fill="#37474f"/>
+              <line x1="56" y1="89" x2="186" y2="89" stroke="#607d8b" stroke-width="1.2" stroke-dasharray="3 3"/>
+              <path class="td-base" pathLength="1" d="M56 89 L191 140" stroke="#1565c0" stroke-width="2.5" fill="none"/>
+              <g class="td-lab-base">
+                <path d="M96 89 A40 40 0 0 1 93.4 103.1" stroke="#1565c0" stroke-width="2" fill="none"/>
+                <text x="104" y="132" font-size="12" font-weight="bold" fill="#1565c0">鎖定樹基</text>
+              </g>
+              <path class="td-top" pathLength="1" d="M56 89 L191 22" stroke="#c62828" stroke-width="2.5" fill="none"/>
+              <g class="td-lab-top">
+                <path d="M102 89 A46 46 0 0 0 97.2 68.5" stroke="#c62828" stroke-width="2" fill="none"/>
+                <text x="74" y="50" font-size="12" font-weight="bold" fill="#c62828">鎖定樹頂</text>
+              </g>
+              <g class="td-final">
+                <line x1="226" y1="26" x2="226" y2="136" stroke="#1b5e20" stroke-width="2"/>
+                <path d="M226 20 L221 30 H231 Z M226 142 L221 132 H231 Z" fill="#1b5e20"/>
+                <text x="60" y="22" font-size="16" font-weight="bold" fill="#1b5e20">樹高 = ?</text>
+              </g>
+            </svg>
+          </details>
+        </div>
+
+        <!-- ② 胸徑 -->
+        <div class="step-panel" id="dbh-section">
+          <div id="dbh-camera-unavailable" class="msg info" style="display:none;">
+            相機不可用,已退回純角度模式:請直接在下方「手動輸入 DBH」填入以輪徑尺/皮尺實測的胸徑(公分)。
+          </div>
+          <div id="dbh-camera-block" style="display:none;">
+            <div class="btn-row">
+              <button id="btn-shoot-trunk" type="button">拍攝樹幹(凍結畫面)</button>
+              <button id="btn-retake-trunk" class="ghost" type="button" style="display:none;">返回即時畫面</button>
+            </div>
+            <div class="dbh-readout" id="dbh-px-readout">尚未拍攝</div>
+            <div class="dbh-readout" id="dbh-camera-estimate"></div>
+            <div class="cam-note" style="margin-top:0;">拍攝後,在畫面上拖曳兩條線對齊胸高(約 1.3m)處左右樹皮邊緣。</div>
+          </div>
+          <label class="field-label" for="input-manual-dbh">手動輸入 DBH(公分)— 填了會覆蓋相機估值</label>
+          <input type="number" id="input-manual-dbh" step="0.1" min="0" placeholder="例如 40">
+        </div>
+
+        <!-- ③ 存檔:GPS + 樹種/碳匯 + 儲存 -->
+        <div class="step-panel" id="save-section">
+          <div id="carbon-section">
+            <div class="grid2">
+              <div>
+                <label class="field-label" for="select-species">樹種</label>
+                <select id="select-species"></select>
+              </div>
+              <div>
+                <label class="field-label" for="input-tree-name">名稱/編號(可選)</label>
+                <input type="text" id="input-tree-name" placeholder="例:校門口 #1">
+              </div>
+            </div>
+            <div id="gps-section" style="margin-top:6px;">
+              <div class="grid2">
+                <button id="btn-record-gps" type="button">📍 記錄位置</button>
+                <button id="btn-compute-carbon" type="button">計算碳匯</button>
+              </div>
+              <button id="btn-retake-gps" class="ghost" type="button" style="display:none;">重新定位</button>
+              <div id="gps-error" class="msg error" style="display:none;margin-top:6px;"></div>
+              <div id="gps-result-box" class="result-box" style="display:none;margin-top:6px;">
+                <div class="h-sub" id="gps-latlng"></div>
+                <div class="h-sub" id="gps-accuracy"></div>
+                <div class="h-sub" id="gps-time"></div>
+              </div>
+            </div>
+            <div id="carbon-error" class="msg error" style="display:none;margin-top:6px;"></div>
+            <div id="carbon-result-box" class="result-box" style="display:none;margin-top:6px;">
+              <div class="h-main" id="carbon-co2e">-- kg CO2e</div>
+              <details class="mini">
+                <summary>計算明細與公式依據</summary>
+                <div class="h-sub" id="carbon-h"></div>
+                <div class="h-sub" id="carbon-dbh"></div>
+                <div class="h-sub" id="carbon-d"></div>
+                <div class="h-sub" id="carbon-agb"></div>
+                <div class="h-sub" id="carbon-biomass"></div>
+                <div class="h-sub" id="carbon-carbon"></div>
+                <div class="h-sub" id="carbon-gps" style="display:none;"></div>
+                <div class="h-sub" id="species-note"></div>
+              </details>
+              <div class="h-sub note-disclaimer" style="color:var(--note);font-size:0.83rem;">文獻公式之教學估算,非正式碳權查證依據。</div>
+            </div>
+            <div class="btn-row" style="margin-top:6px;">
+              <button id="btn-save-tree" type="button" style="flex:2;">💾 儲存這棵樹</button>
+              <button id="btn-reset-all" class="danger" type="button" style="flex:1;">重設</button>
+            </div>
+            <div id="save-tree-msg" class="msg info" style="display:none;margin-top:6px;"></div>
+          </div>
+        </div>
+
+        <!-- 焦距(FOV)校正拍攝中:由「設定」分頁觸發,共用同一個相機畫面 -->
+        <div class="step-panel" id="step-fov">
+          <div class="msg info" style="margin-top:0;">焦距校正:把兩條線拖到校正物左右邊緣,再按「計算並儲存焦距」。</div>
+          <div class="dbh-readout" id="fov-px-readout"></div>
+          <div class="btn-row">
+            <button id="btn-save-fov" class="secondary" type="button">計算並儲存焦距</button>
+            <button id="btn-retake-fov" class="ghost" type="button">取消,回設定</button>
+          </div>
+          <div id="fov-msg" class="msg info" style="display:none;"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== 分頁 2:清單 ===================== -->
+    <div class="tab-panel" id="tab-list">
+      <section class="card" id="summary-section">
+        <div class="section-title" style="margin-bottom:6px;">全場域碳總量</div>
+        <div class="summary-box">
+          <div class="summary-total" id="summary-total-co2e">0.00 kg CO2e</div>
+          <div class="summary-count" id="summary-total-count">共 0 棵</div>
+        </div>
+        <div id="summary-legacy-note" class="msg info" style="display:none;"></div>
+      </section>
+      <section class="card" id="tree-list-section">
+        <div class="section-title">樹木清單
+          <small>資料儲存在此裝置的瀏覽器(localStorage),換裝置或清瀏覽器資料會消失。</small>
+        </div>
+        <div id="tree-list-empty" class="msg info">尚未儲存任何樹,到「量測」分頁完成量測後按「儲存這棵樹」。</div>
+        <div id="tree-list"></div>
+      </section>
+    </div>
+
+    <!-- ===================== 分頁 3:設定 ===================== -->
+    <div class="tab-panel scroll" id="tab-settings">
+
+      <details class="card" id="level-section" open>
+        <summary>📐 水平校正</summary>
+        <div class="cal-area" id="cal-area">
+        <div class="orient-mask" id="orient-mask-settings" role="alert">
+          <div class="om-icon">📱</div>
+          <div>請把手機/平板直立拿(螢幕朝向自己),<br>本工具只支援直向量測</div>
+        </div>
+        <div class="cal-live">
+          <div class="level-wrap">
+            <div class="level-circle">
+              <div class="level-line" id="level-line"></div>
+              <div class="level-center-dot"></div>
+            </div>
+          </div>
+          <div>
+            <div class="angle-display" id="angle-display-settings">—</div>
+            <div class="angle-caption">目前仰角(往上為正)</div>
+            <div class="raw-beta-caption" id="raw-beta-display">原始 raw beta:—(debug 用)</div>
+          </div>
+        </div>
+        <div class="msg info" id="cal-sensor-note" style="display:none;">感測器尚未啟用:請先到「量測」分頁按「啟用相機與感測器」。</div>
+        <button id="btn-calibrate" type="button" disabled>校正歸零</button>
+        </div>
+        <div class="cal-warn">⚠ 校正後請保持手機直向,不要轉向;轉向後請重新校正。</div>
+        <div id="calibrate-msg" class="msg info" style="display:none;"></div>
+        <div id="orient-changed-msg" class="msg warn" style="display:none;"></div>
+        <svg class="demo-svg cal-demo" viewBox="0 0 240 150" role="img" aria-label="校正示意:手機直立、側邊貼門框,按校正歸零,顯示 0 度" style="margin:8px auto 0;">
+          <rect width="240" height="150" fill="#f3f8ef"/>
+          <rect y="140" width="240" height="10" fill="#cfd8cc"/>
+          <rect x="8" y="18" width="20" height="122" fill="#e0d7cf"/>
+          <rect x="28" y="18" width="14" height="122" fill="#8d6e63" stroke="#4e342e" stroke-width="1.5"/>
+          <text x="35" y="13" font-size="10" font-weight="bold" fill="#4e342e" text-anchor="middle">門框</text>
+          <rect x="44" y="30" width="58" height="106" rx="9" fill="#37474f" stroke="#1c262b" stroke-width="1.5"/>
+          <rect x="49" y="40" width="48" height="84" rx="3" fill="#e8f5e9"/>
+          <text class="cd-badge" x="73" y="72" font-size="26" font-weight="bold" fill="#1b5e20" text-anchor="middle">0°</text>
+          <rect x="55" y="90" width="36" height="18" rx="5" fill="#2e7d32"/>
+          <text x="73" y="103" font-size="10.5" font-weight="bold" fill="#fff" text-anchor="middle">歸零</text>
+          <circle class="cd-ripple" cx="73" cy="99" r="14" fill="none" stroke="#e65100" stroke-width="2.5" opacity="0"/>
+          <g class="cd-finger">
+            <rect x="86" y="100" width="10" height="34" rx="5" fill="#ffcc80" stroke="#e65100" stroke-width="1.5"/>
+          </g>
+          <g class="cd-step3">
+            <line x1="102" y1="50" x2="232" y2="50" stroke="#c62828" stroke-width="2" stroke-dasharray="5 4"/>
+            <text x="167" y="43" font-size="11" font-weight="bold" fill="#c62828" text-anchor="middle">水平 = 0°</text>
+          </g>
+          <g font-size="11.5" font-weight="bold" fill="#263238">
+            <text class="cd-step1" x="110" y="82">① 直立、側邊貼門框</text>
+            <text class="cd-step2" x="110" y="104">② 按「校正歸零」</text>
+            <text class="cd-step3" x="110" y="126">③ 顯示 0°</text>
+          </g>
+        </svg>
+        <div class="invert-row">
+          <span class="invert-label">反轉角度方向
+            <small>往上抬時角度應為正數;若反而變負,切換這個(預設已開)</small>
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="invert-toggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="cal-time" id="cal-time">尚未校正</div>
+        <button id="btn-clear-cal" class="ghost" type="button">清除校正</button>
+      </details>
+
+      <details class="card" id="fov-section">
+        <summary>📷 焦距(FOV)校正(選用)</summary>
+        <div class="cam-note" style="margin-top:0;">用一個已知寬度的物體(例如 A4 紙短邊 0.21m)校正一次,可提升胸徑精度,結果存在此裝置。填好下面兩格後按「拍攝校正物」,會切到量測畫面凍結取景,完成後自動回到這裡。</div>
+        <label class="field-label" for="input-fov-wreal" style="margin-top:8px;">校正物實際寬度 W_real(公尺)</label>
+        <input type="number" id="input-fov-wreal" step="0.001" min="0.001" placeholder="例如 0.21(A4紙短邊)">
+        <label class="field-label" for="input-fov-l">拍攝時與校正物的距離 L(公尺)</label>
+        <input type="number" id="input-fov-l" step="0.01" min="0.01" placeholder="例如 2">
+        <button id="btn-shoot-fov" class="secondary" type="button">拍攝校正物(切到量測畫面)</button>
+        <button id="btn-clear-fov" class="ghost" type="button">清除校正,改用預設值</button>
+        <div id="fov-confirm" class="msg error" style="display:none;">
+          目前有一張拍好的樹幹胸徑,開始焦距校正會放棄它,確定?
+          <div class="btn-row" style="margin-top:6px;">
+            <button id="btn-fov-confirm-yes" class="danger" type="button">確定,放棄胸徑</button>
+            <button id="btn-fov-confirm-no" class="ghost" type="button">取消</button>
+          </div>
+        </div>
+        <div id="fov-msg-settings" class="msg info" style="display:none;"></div>
+        <div class="fov-status" id="fov-status">尚未校正:目前使用預設 f_px(假設水平視角 HFOV≈66°),DBH 為粗估。</div>
+      </details>
+
+      <!-- 資料匯出與雲端同步(選填,附加功能,不影響量測/算碳主流程) -->
+      <details class="card" id="sync-section">
+        <summary>☁ 資料匯出與雲端同步</summary>
+        <div class="cam-note" style="margin-top:0;">只用來備份/彙整已存的樹木清單。不會收集姓名等個資,只有匿名裝置代碼、選填的場次標籤,以及樹木的量測資料(含GPS)。</div>
+
+        <label class="field-label" for="input-session" style="margin-top:8px;">場次/班級標籤(選填,請勿填寫真實姓名)</label>
+        <input type="text" id="input-session" placeholder="例如:3年2班 / 0718上午場">
+
+        <div class="msg info" id="device-id-display"></div>
+
+        <div class="row2">
+          <button id="btn-export-csv" class="secondary" type="button">匯出 CSV</button>
+          <button id="btn-export-json" class="secondary" type="button">匯出 JSON</button>
+        </div>
+
+        <button id="btn-sync-now" type="button">立即同步(平常存檔後會自動上傳)</button>
+        <div class="msg info" id="sync-pending-count"></div>
+        <div class="msg info" id="mongo-status"></div>
+        <div id="sync-msg" class="msg info" style="display:none;"></div>
+      </details>
+
+      <details class="card" id="help-section">
+        <summary>📖 怎麼校正(給老師看)</summary>
+        <ol class="help-list">
+          <li>手機<b>直立</b>、背面朝外,側邊貼著門框或牆角(垂直面),這就是水平視線姿勢,按「校正歸零」。</li>
+          <li>把手機往上抬,角度應變成<b>正數</b>;如果變負數,切換「反轉角度方向」。</li>
+          <li>用已知高度的目標驗證(例如一層樓約 3 公尺),誤差在 5–10% 內屬正常。</li>
+          <li>每支手機各自校正一次,App 會記住(換手機或清除瀏覽器資料需重做)。</li>
+          <li>量樹高建議用皮尺或步測填「距離 D」,比留空(俯角推算)準很多。</li>
+        </ol>
+      </details>
+
+      <details class="card" id="formula-section">
+        <summary>ƒ 公式說明</summary>
+        <div class="doc-text">
+          <p>本頁為單一自包含網頁應用(可加到主畫面、離線可用),資料只存在此裝置的瀏覽器內。</p>
+          <p>樹高:實測距離 H = h + D · tan(θ_top);或俯角推算 D = -h / tan(θ_base)。DBH 採針孔相機模型:DBH = p_trunk · D / f_px。</p>
+          <p>碳匯(一般喬木):AGB = 0.0673 × (ρ · DBH² · H)^0.976;全株生物量 = AGB × 1.24;含碳量 = 全株生物量 × CF;CO₂e = 含碳量 × 44/12(Chave et al. 2014;趙國容等 2022)。竹類採 AR-TMS0003 單稈式;棕櫚採 Frangi &amp; Lugo (1985) 式,僅地上部。本結果為文獻公式之教學估算,非正式碳權查證依據。</p>
+        </div>
+      </details>
+
+      <div class="card" id="about-section">
+        <div class="doc-text">
+          <p><b>關於</b></p>
+          <p>TwTrees 碳盤查・版本 <span id="app-version-text"></span></p>
+          <p>臺北市立大學永續環境研究室 開發</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <nav id="tab-nav">
+    <button type="button" class="tab-btn active" id="tab-btn-measure" data-tab="measure"><span class="ti">📐</span>量測</button>
+    <button type="button" class="tab-btn" id="tab-btn-list" data-tab="list"><span class="ti">🌳</span><span id="tab-list-label">清單</span></button>
+    <button type="button" class="tab-btn" id="tab-btn-settings" data-tab="settings"><span class="ti">⚙</span>設定</button>
+  </nav>
+
+  <div id="toast"></div>
+
+  <!-- 一次性資料上傳同意提示(第一次開啟時顯示) -->
+  <div id="consent-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#fff;max-width:420px;width:100%;border-radius:12px;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+      <div style="font-size:1.2rem;font-weight:bold;margin-bottom:12px;">資料上傳說明</div>
+      <p style="line-height:1.6;margin-bottom:10px;">本 App 會在連上網路時,將你量測的<strong>樹木資料、量測過程與樹木所在的 GPS 位置,以及瀏覽器/手機型號資訊(用於分析量測誤差)</strong>,以<strong>匿名</strong>方式(僅含隨機裝置代碼與選填的場次標籤,<strong>不含姓名等個資</strong>)上傳到教學平台,供成效統計與老師彙整使用。</p>
+      <p style="line-height:1.6;margin-bottom:16px;">你可以選擇不同意;不同意時,資料只會留在這台裝置、不會上傳。</p>
+      <div style="display:flex;gap:10px;">
+        <button id="consent-agree" type="button" style="flex:1;">我同意,開始使用</button>
+        <button id="consent-decline" type="button" class="secondary" style="flex:1;">不同意(僅本機使用)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // App 版本字串:寫進每筆樹木紀錄的 measure.appVersion(MongoDB 紀錄用)。改版時請一併更新。
+  var APP_VERSION = "2026.10.08-mongo1";
+
+  /* =========================================================
+   * 感測器符號約定(沿用 height-clinometer.html 已驗證邏輯):
+   *   仰角 = SIGN * (raw beta − zeroRef)
+   * 真機實測結論:反轉方向預設為「開」,即 SIGN = +1。
+   * 若實測時方向相反,可用畫面上的「反轉角度方向」開關即時切換。
+   * ========================================================= */
+  var SIGN = 1;
+
+  var rawBeta = null;
+  var zeroRef = 0;
+  var calibrated = false;
+  var sensorActive = false;
+
+  var capturedBaseDeg = null;
+  var capturedTopDeg = null;
+  var D = null; // 水平距離(m):實測或推算
+  var H = null; // 推算樹高(m)
+  var dSource = null; // "manual"(實測輸入) | "estimated"(俯角推算) | null
+
+  var cameraAvailable = null; // null=尚未嘗試, true=可用, false=不可用
+  var cameraReady = false;
+  var canvasW = 0;
+  var canvasH = 0;
+
+  var mode = "live"; // "live" | "freeze-dbh" | "freeze-fov"
+  var lineX = [0, 0];
+  var draggingIdx = null;
+
+  var fovCal = null; // { fpx: number, canvasW: number } 已儲存的校正
+  var cameraDbhEstimateM = null;
+  // 只有「拍攝樹幹」成功凍結畫面那次才會是 true;拍 FOV 校正物、返回即時畫面、
+  // 重設量測都會設回 false。避免使用者做過 FOV 校正但沒拍樹幹時,
+  // updateDbhReadout() 誤用 FOV 校正時留下的 lineX 線位算出一個假的 DBH。
+  var hasTrunkShot = false;
+  var lastCarbonResult = null;
+  var gpsCoord = null; // { lat, lng, accuracy, timeStr } 單次定位記錄的座標,null 代表尚未記錄
+
+  // ---- 版面狀態(三分頁 + 量測步驟) ----
+  var currentTab = "measure"; // "measure" | "list" | "settings"
+  var currentStep = 1;        // 1 樹高 | 2 胸徑 | 3 存檔
+
+  // ---- 校正值持久化(新 key;既有 key 一律不改名) ----
+  var LEVELCAL_KEY = "cmytrees.levelCal"; // JSON: { zeroRef, invert, savedAt, orient }
+  var EYEHEIGHT_KEY = "cmytrees.eyeHeight";
+  var levelCalSavedAt = null;
+
+  // ---- 已儲存的樹木清單(localStorage) ----
+  var TREES_STORAGE_KEY = "cmytrees.trees";
+  var trees = []; // { id, name, species, dbhCm, heightM, co2eKg, lat, lng, accuracy, createdAt, formulaVersion, dSource }
+
+  // 樹基俯角 <= 此值時直接拒算(取代原本的 TAN_EPSILON 除零防呆:tan(3°)≈0.052
+  // 遠大於舊 TAN_EPSILON≈0.02,3° 閘門本身已能防止除以接近 0 的 tan(θ_base))。
+  var BASE_ANGLE_MIN_DEG = 3;
+  // 樹頭角度 >= 此值視為太接近垂直,tan() 會爆炸,直接拒算。
+  var TOP_ANGLE_MAX_DEG = 89;
+  // 實測距離 D 的合理輸入區間(公尺),hasManualDist() 與 tryComputeHeightDistance()
+  // 的驗證共用同一組常數,避免兩處各自寫一份數字、之後改一邊忘了改另一邊。
+  // 注意:HTML 端 input-manual-dist 的 min/max 屬性也寫了同一組數字,改這裡要同步改那邊
+  // (placeholder 已改由 JS 用這兩個常數組字串)。
+  var MANUAL_D_MIN = 0.5;
+  var MANUAL_D_MAX = 100;
+
+  // 文獻依據:趙國容等(2022)水土保持樹種碳存量估算參數之資料庫,中華水土保持學報53(2):100-110
+  // 一般喬木採其 eqn 13(Chave et al. 2014 + IPCC 2006):
+  //   C(kg) = 0.0673*(ρ*DBH^2*H)^0.976 * BEF(=1) * (1+R)(=1.24) * CF
+  //   ρ:木材密度 g/cm3;DBH:cm;H:m;CF:碳含量比;適用 DBH≥5cm
+  // 竹類採環境部竹林經營碳匯專案方法學 AR-TMS0003(引顏添明2013)散生竹單稈式:
+  //   AGB(kg/稈) = 0.0502*(DBH^2*H)^0.8223,僅地上部
+  // 棕櫚採 Frangi & Lugo (1985):AGB(kg) = 4.5 + 7.7*H,僅地上部,粗估
+  var SPECIES = {
+    banyan:   { label: "榕樹",         formula: "chave",  rho: 0.42, cf: 0.454, note: "ρ、CF採同屬大有榕值(趙國容等2022表7)" },
+    camphor:  { label: "樟樹",         formula: "chave",  rho: 0.45, cf: 0.463, note: "ρ為文獻常見值(未驗證),CF採資料庫平均" },
+    mahogany: { label: "大葉桃花心木", formula: "chave",  rho: 0.52, cf: 0.463, note: "ρ=0.52(基本比重,文獻值),CF採資料庫平均" },
+    bamboo:   { label: "竹類(單稈)",   formula: "bamboo", rho: null, cf: 0.463, note: "AR-TMS0003散生竹單稈式,僅地上部;CF沿用資料庫平均46.3%(未驗證)" },
+    palm:     { label: "棕櫚類",       formula: "palm",   rho: null, cf: 0.463, note: "Frangi&Lugo(1985),僅地上部,粗估;原式H為莖高,以總樹高代入會偏高;CF沿用資料庫平均46.3%(未驗證)" },
+    other:    { label: "其他/未知",    formula: "chave",  rho: 0.55, cf: 0.463, note: "採資料庫平均ρ=0.55、CF=46.3%" }
+  };
+  var ROOT_FACTOR = 1.24;   // IPCC(2006) 亞熱帶潮濕林 (1+R),R=0.24
+  var C_TO_CO2 = 44 / 12;   // 精確分子量比
+
+  // ---- DOM 參照 ----
+  var el = {
+    banner: document.getElementById("banner"),
+
+    btnEnableSensor: document.getElementById("btn-enable-sensor"),
+    sensorError: document.getElementById("sensor-error"),
+    btnEnableCamera: document.getElementById("btn-enable-camera"),
+    cameraMsg: document.getElementById("camera-msg"),
+
+    cameraWrap: document.getElementById("camera-wrap"),
+    cameraVideo: document.getElementById("camera-video"),
+    cameraCanvas: document.getElementById("camera-canvas"),
+    snapCanvas: document.getElementById("snap-canvas"),
+    shutterFlash: document.getElementById("shutter-flash"),
+    freezeLabel: document.getElementById("freeze-label"),
+    dbhOverlay: document.getElementById("dbh-overlay"),
+    angleOverlay: document.getElementById("angle-overlay"),
+    lockFlash: document.getElementById("lock-flash"),
+    orientMaskMeasure: document.getElementById("orient-mask-measure"),
+    orientMaskSettings: document.getElementById("orient-mask-settings"),
+    calArea: document.getElementById("cal-area"),
+    orientHint: document.getElementById("orient-hint"),
+    orientHintText: document.getElementById("orient-hint-text"),
+    calHintText: document.getElementById("cal-hint-text"),
+    camTop: document.getElementById("cam-top"),
+    steepHint: document.getElementById("steep-hint"),
+    btnOrientGoto: document.getElementById("btn-orient-goto"),
+    orientChangedMsg: document.getElementById("orient-changed-msg"),
+    btnEyeFromHeight: document.getElementById("btn-eye-from-height"),
+    eyeConvert: document.getElementById("eye-convert"),
+    inputBodyH: document.getElementById("input-body-h"),
+    btnEyeConvertOk: document.getElementById("btn-eye-convert-ok"),
+    btnEyeConvertCancel: document.getElementById("btn-eye-convert-cancel"),
+    eyeConvertMsg: document.getElementById("eye-convert-msg"),
+    heightDemo: document.getElementById("height-demo"),
+
+    enableSection: document.getElementById("enable-section"),
+    btnEnableAll: document.getElementById("btn-enable-all"),
+    camFallback: document.getElementById("cam-fallback"),
+    calHint: document.getElementById("cal-hint"),
+    sensorHint: document.getElementById("sensor-hint"),
+    sensorHintMsg: document.getElementById("sensor-hint-msg"),
+    btnRetrySensor: document.getElementById("btn-retry-sensor"),
+    btnGotoCalibrate: document.getElementById("btn-goto-calibrate"),
+    stepTabs: document.getElementById("step-tabs"),
+    toast: document.getElementById("toast"),
+    tabListLabel: document.getElementById("tab-list-label"),
+    fovSection: document.getElementById("fov-section"),
+    fovMsgSettings: document.getElementById("fov-msg-settings"),
+    btnClearCal: document.getElementById("btn-clear-cal"),
+    calTime: document.getElementById("cal-time"),
+    calSensorNote: document.getElementById("cal-sensor-note"),
+    angleDisplaySettings: document.getElementById("angle-display-settings"),
+
+    angleDisplay: document.getElementById("angle-display"),
+    rawBetaDisplay: document.getElementById("raw-beta-display"),
+    levelLine: document.getElementById("level-line"),
+    btnCalibrate: document.getElementById("btn-calibrate"),
+    calibrateMsg: document.getElementById("calibrate-msg"),
+    invertToggle: document.getElementById("invert-toggle"),
+
+    inputEyeH: document.getElementById("input-eye-h"),
+    inputManualDist: document.getElementById("input-manual-dist"),
+    btnLockBase: document.getElementById("btn-lock-base"),
+    btnLockTop: document.getElementById("btn-lock-top"),
+    baseValue: document.getElementById("base-value"),
+    topValue: document.getElementById("top-value"),
+    baseMsg: document.getElementById("base-msg"),
+    heightError: document.getElementById("height-error"),
+    heightInfo: document.getElementById("height-info"),
+    heightResultBox: document.getElementById("height-result-box"),
+    resultH: document.getElementById("result-h"),
+    resultHRange: document.getElementById("result-h-range"),
+    resultD: document.getElementById("result-d"),
+
+    dbhCameraUnavailable: document.getElementById("dbh-camera-unavailable"),
+    dbhCameraBlock: document.getElementById("dbh-camera-block"),
+    btnShootTrunk: document.getElementById("btn-shoot-trunk"),
+    btnRetakeTrunk: document.getElementById("btn-retake-trunk"),
+    dbhPxReadout: document.getElementById("dbh-px-readout"),
+    dbhCameraEstimate: document.getElementById("dbh-camera-estimate"),
+
+    inputFovWreal: document.getElementById("input-fov-wreal"),
+    inputFovL: document.getElementById("input-fov-l"),
+    btnShootFov: document.getElementById("btn-shoot-fov"),
+    btnRetakeFov: document.getElementById("btn-retake-fov"),
+    fovPxReadout: document.getElementById("fov-px-readout"),
+    btnSaveFov: document.getElementById("btn-save-fov"),
+    btnClearFov: document.getElementById("btn-clear-fov"),
+    fovMsg: document.getElementById("fov-msg"),
+    fovStatus: document.getElementById("fov-status"),
+
+    inputManualDbh: document.getElementById("input-manual-dbh"),
+
+    btnRecordGps: document.getElementById("btn-record-gps"),
+    btnRetakeGps: document.getElementById("btn-retake-gps"),
+    gpsError: document.getElementById("gps-error"),
+    gpsResultBox: document.getElementById("gps-result-box"),
+    gpsLatLng: document.getElementById("gps-latlng"),
+    gpsAccuracy: document.getElementById("gps-accuracy"),
+    gpsTime: document.getElementById("gps-time"),
+
+    selectSpecies: document.getElementById("select-species"),
+    speciesNote: document.getElementById("species-note"),
+    btnComputeCarbon: document.getElementById("btn-compute-carbon"),
+    carbonError: document.getElementById("carbon-error"),
+    carbonResultBox: document.getElementById("carbon-result-box"),
+    carbonCo2e: document.getElementById("carbon-co2e"),
+    carbonH: document.getElementById("carbon-h"),
+    carbonDbh: document.getElementById("carbon-dbh"),
+    carbonD: document.getElementById("carbon-d"),
+    carbonAgb: document.getElementById("carbon-agb"),
+    carbonBiomass: document.getElementById("carbon-biomass"),
+    carbonCarbon: document.getElementById("carbon-carbon"),
+    carbonGps: document.getElementById("carbon-gps"),
+
+    inputTreeName: document.getElementById("input-tree-name"),
+    btnSaveTree: document.getElementById("btn-save-tree"),
+    saveTreeMsg: document.getElementById("save-tree-msg"),
+
+    summaryTotalCo2e: document.getElementById("summary-total-co2e"),
+    summaryTotalCount: document.getElementById("summary-total-count"),
+    summaryLegacyNote: document.getElementById("summary-legacy-note"),
+    treeListEmpty: document.getElementById("tree-list-empty"),
+    treeList: document.getElementById("tree-list"),
+
+    btnResetAll: document.getElementById("btn-reset-all"),
+
+    inputSession: document.getElementById("input-session"),
+    deviceIdDisplay: document.getElementById("device-id-display"),
+    btnExportCsv: document.getElementById("btn-export-csv"),
+    btnExportJson: document.getElementById("btn-export-json"),
+    btnSyncNow: document.getElementById("btn-sync-now"),
+    syncPendingCount: document.getElementById("sync-pending-count"),
+    mongoStatus: document.getElementById("mongo-status"),
+    syncMsg: document.getElementById("sync-msg")
+  };
+
+  var ctx = el.cameraCanvas.getContext("2d");
+
+  function deg2rad(d) { return (d * Math.PI) / 180; }
+
+  function showMsg(node, text, cls) {
+    node.textContent = text;
+    node.className = "msg " + (cls || "error");
+    node.style.display = text ? "block" : "none";
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // H1 修正:任一會影響碳匯計算的上游輸入(H、DBH 來源、樹種)一旦變動,
+  // 就讓已算出的碳匯結果過期,強制使用者重新按「計算碳匯」才能再存檔,
+  // 避免存出「新樹種/新樹高」配「舊 co2eKg」的矛盾紀錄。
+  function invalidateCarbonResult() {
+    lastCarbonResult = null;
+    el.carbonResultBox.style.display = "none";
+  }
+
+  // =========================================================
+  // 樹種下拉選單
+  // =========================================================
+  (function initSpeciesSelect() {
+    var keys = ["banyan", "camphor", "mahogany", "bamboo", "palm", "other"];
+    for (var i = 0; i < keys.length; i++) {
+      var opt = document.createElement("option");
+      opt.value = keys[i];
+      opt.textContent = SPECIES[keys[i]].label;
+      if (keys[i] === "other") opt.selected = true;
+      el.selectSpecies.appendChild(opt);
+    }
+  })();
+
+  // 讓 SPECIES.note(係數出處/文獻備註)在畫面上可見,而不是只寫在程式裡沒人讀。
+  function updateSpeciesNote() {
+    var info = SPECIES[el.selectSpecies.value] || SPECIES.other;
+    el.speciesNote.textContent = info.note ? "係數依據:" + info.note : "";
+  }
+  updateSpeciesNote(); // 初始選項(other)也要顯示一次
+
+  // H1:換樹種代表碳公式係數換了,先前算出的結果不再對應目前選項
+  el.selectSpecies.addEventListener("change", function () {
+    invalidateCarbonResult();
+    updateSpeciesNote();
+    updateBanner(); // 棕櫚免 DBH 的引導文字要立即切換,不能等下一個事件
+  });
+
+  // =========================================================
+  // 常駐提示 banner
+  // =========================================================
+  function updateBanner() {
+    var text;
+    if (!sensorActive) {
+      text = "請先按「啟用相機與感測器」(iOS 需允許權限)。";
+    } else if (cameraAvailable === null) {
+      text = "相機啟動中…(若一直沒有畫面,請重新整理並允許相機權限)";
+    } else if (!calibrated) {
+      text = "請先到「設定」做水平校正歸零(每支手機只需一次,會記住)。";
+    } else if (!hasManualDist() && capturedBaseDeg === null) {
+      text = "準星對準樹基(樹幹與地面交界處),按「鎖定樹基」;若已填入實測距離 D,可跳過此步。";
+    } else if (capturedTopDeg === null) {
+      text = "請將準星對準樹頭(樹的最高點),按「鎖定樹頭」。";
+    } else if (H === null || D === null) {
+      text = "樹高計算異常,請檢查上方錯誤訊息並重新鎖定角度。";
+    } else if (isPalmSelected() && cameraDbhEstimateM === null && !hasValidManualDbh()) {
+      text = "棕櫚類公式不需要 DBH,可直接按「計算碳匯」(有量到 DBH 也能填,僅供記錄)。";
+    } else if (cameraDbhEstimateM === null && !hasValidManualDbh()) {
+      text = cameraAvailable
+        ? "請按「拍攝樹幹」量胸徑,或直接於下方手動輸入 DBH。"
+        : "相機不可用,請於下方手動輸入 DBH(公分)。";
+    } else {
+      text = "資料齊全,可以按「計算碳匯」看結果。";
+    }
+    el.banner.textContent = text;
+    updateMeasureView();
+  }
+
+  function hasValidManualDbh() {
+    var v = parseFloat(el.inputManualDbh.value);
+    return isFinite(v) && v > 0;
+  }
+
+  function hasManualDist() {
+    var v = parseFloat(el.inputManualDist.value);
+    return isFinite(v) && v >= MANUAL_D_MIN && v <= MANUAL_D_MAX;
+  }
+
+  function isPalmSelected() {
+    var info = SPECIES[el.selectSpecies.value] || SPECIES.other;
+    return info.formula === "palm";
+  }
+
+  // =========================================================
+  // 量測分頁檢視更新:啟用遮罩、校正提示、步驟切換、步驟完成標記。
+  // (舊的浮動操作列已併入下方操作區:鎖定鈕、拍攝樹幹鈕都在相機正下方,不需捲動。)
+  // =========================================================
+  // dbh-overlay 依 cam-top 實際高度定位,不蓋住上方提示/按鈕;量測頁隱藏時高度為 0 → 不更新(切回量測頁時重算)
+  function updateDbhOverlayTop() {
+    var h = el.camTop.offsetHeight;
+    if (h > 0) el.dbhOverlay.style.top = (h + 8) + "px";
+  }
+  function updateMeasureView() {
+    var fov = mode === "freeze-fov";
+
+    // 首次使用:感測器與相機都還沒啟用才遮住畫面;焦距校正拍攝中不遮。
+    // 只有感測器沒啟用(例如權限被拒)但相機可用 → 不遮相機,改顯示一行提示+重試鈕。
+    el.enableSection.style.display = (!sensorActive && !cameraReady && !fov) ? "flex" : "none";
+    var hintOn = !sensorActive && cameraReady && !fov;
+    el.sensorHint.style.display = hintOn ? "flex" : "none";
+    el.sensorHintMsg.style.display = (hintOn && sensorErrText) ? "block" : "none";
+    el.sensorHintMsg.textContent = sensorErrText;
+    el.camFallback.style.display = cameraAvailable === false ? "block" : "none";
+    el.calHint.style.display = (sensorActive && !calibrated && !fov) ? "flex" : "none";
+    // 舊校正疑似橫拿做的:與「尚未校正」合併成同一條提示,不重複顯示
+    el.calHintText.textContent = staleCal ? "先前的校正可能是橫拿做的,請直拿重新校正" : "尚未做水平校正,角度會不準";
+    var frozenNow = mode === "freeze-dbh" || mode === "freeze-fov";
+    el.orientHint.style.display = (orientHintOn() && !frozenNow) ? "flex" : "none"; // 凍結時收起
+    // 凍結時遮罩一律不顯示(拖線不受影響);steep 不遮罩,只顯示一行提示
+    el.orientMaskMeasure.style.display = (orientBlocked && !frozenNow) ? "flex" : "none";
+    el.steepHint.style.display = (poseSteep && !orientBlocked && !frozenNow) ? "block" : "none";
+
+    // 凍結中:顯示醒目標籤與 DBH 大字,暫時收起 banner
+    var frozen = mode === "freeze-dbh" || mode === "freeze-fov";
+    el.freezeLabel.style.display = frozen ? "block" : "none";
+    el.freezeLabel.textContent = snapFailed
+      ? "⚠ 凍結畫面失敗,請按「" + (fov ? "取消,回設定" : "返回即時畫面") + "」後再拍一次"
+      : "📸 已凍結 — 拖兩條線對齊" + (fov ? "校正物" : "樹幹") + "左右邊緣" + (orientBlocked ? "。轉回直向才能鎖定或重拍" : "");
+    el.banner.style.display = frozen ? "none" : "block";
+    el.dbhOverlay.style.display = mode === "freeze-dbh" ? "block" : "none";
+    el.angleOverlay.style.display = frozen ? "none" : "block"; // 凍結時角度讀數無用,收起以免擋住底端拖曳把手
+    el.dbhOverlay.textContent = cameraDbhEstimateM !== null
+      ? "DBH ≈ " + (cameraDbhEstimateM * 100).toFixed(1) + " cm"
+      : (D === null ? "DBH — 先完成①樹高" : "DBH —");
+    updateDbhOverlayTop();
+
+    // 步驟面板:焦距校正拍攝中只顯示 FOV 面板
+    el.stepTabs.style.display = fov ? "none" : "grid";
+    var panels = { 1: "height-section", 2: "dbh-section", 3: "save-section" };
+    for (var k = 1; k <= 3; k++) {
+      var p = document.getElementById(panels[k]);
+      var on = !fov && currentStep === k;
+      p.className = "step-panel" + (on ? " active" : "");
+      document.getElementById("step-btn-" + k).className = "step-btn" + (currentStep === k ? " active" : "");
+    }
+    document.getElementById("step-fov").className = "step-panel" + (fov ? " active" : "");
+
+    // 完成標記
+    var dbhDone = cameraDbhEstimateM !== null || hasValidManualDbh();
+    document.getElementById("step-btn-1").textContent = "① 樹高" + (H !== null ? " ✓" : "");
+    document.getElementById("step-btn-2").textContent = "② 胸徑" + (dbhDone ? " ✓" : "");
+    document.getElementById("step-btn-3").textContent = "③ 存檔" + (lastCarbonResult ? " ✓" : "");
+  }
+
+  function setStep(n) {
+    clearPendingLock();
+    currentStep = n;
+    updateMeasureView();
+  }
+
+  var toastTimer = null;
+  function showToast(text) {
+    el.toast.textContent = text;
+    el.toast.style.display = "block";
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.toast.style.display = "none"; toastTimer = null; }, 2200);
+  }
+
+  // 三分頁切換:只切顯示,不換頁、不重載;相機串流全程共用同一個 video。
+  function switchTab(name) {
+    clearPendingLock();
+    if (name !== "measure" && mode === "freeze-fov") leaveFovMode(); // 離開量測頁 = 放棄焦距校正拍攝
+    currentTab = name;
+    var names = ["measure", "list", "settings"];
+    for (var i = 0; i < names.length; i++) {
+      document.getElementById("tab-" + names[i]).className =
+        "tab-panel" + (names[i] === "settings" ? " scroll" : "") + (names[i] === name ? " active" : "");
+      document.getElementById("tab-btn-" + names[i]).className = "tab-btn" + (names[i] === name ? " active" : "");
+    }
+    if (name === "measure") updateDbhOverlayTop();
+    if (name === "measure" && cameraReady) {
+      setupCanvasSize();
+      if (mode === "live" && el.cameraVideo.paused) {
+        try { var pr = el.cameraVideo.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
+      }
+    }
+  }
+
+  // =========================================================
+  // 傾角感測器
+  // =========================================================
+  function currentAngle() {
+    if (rawBeta === null) return null;
+    return SIGN * (rawBeta - zeroRef);
+  }
+
+  function updateAngleDisplay() {
+    var a = currentAngle();
+    if (a === null || !isFinite(a)) {
+      el.angleDisplay.textContent = "—";
+      el.angleDisplaySettings.textContent = "—";
+      return;
+    }
+    el.angleDisplay.textContent = a.toFixed(1) + "°";
+    el.angleDisplaySettings.textContent = a.toFixed(1) + "°";
+    var clamped = clamp(a, -90, 90);
+    el.levelLine.style.transform = "translateY(-1.5px) rotate(" + (-clamped) + "deg)";
+    updateRawBetaDisplay();
+  }
+
+  function updateRawBetaDisplay() {
+    if (rawBeta === null) {
+      el.rawBetaDisplay.textContent = "原始 raw beta:—(debug 用)";
+      return;
+    }
+    el.rawBetaDisplay.textContent = "原始 raw beta:" + rawBeta.toFixed(1) + "°(debug 用)";
+  }
+
+  var rawGamma = null;
+  function handleOrientation(event) {
+    if (typeof event.beta === "number" && isFinite(event.beta)) {
+      var first = rawBeta === null;
+      rawBeta = event.beta;
+      rawGamma = (typeof event.gamma === "number" && isFinite(event.gamma)) ? event.gamma : null;
+      updateAngleDisplay();
+      // 第一次收到感測值,或姿勢是否可量測的判斷翻轉時,才重算遮罩;其餘只更新按鈕狀態(避免每筆事件都重繪)
+      if (updatePoseState() || first) updateBlocked(first);
+      else updateSensorButtonsState();
+    }
+  }
+
+  function updateSensorButtonsState() {
+    var ready = sensorActive && rawBeta !== null;
+    // 校正/鎖定:橫拿、太陡/放平、或剛轉向 0.6 秒內(beta 未穩)都停用;拍攝只在橫拿時停用(steep 不擋)
+    var blocked = orientBlocked || poseSteep || orientSettling;
+    el.btnCalibrate.disabled = !ready || orientBlocked || orientSettling; // 校正不看 steep:由 isUprightBeta 回覆「請直立」
+    el.btnLockBase.disabled = !ready || !calibrated || blocked;
+    el.btnLockTop.disabled = !ready || !calibrated || blocked;
+    el.btnShootTrunk.disabled = !!fovPending || orientBlocked;
+    el.btnShootFov.disabled = orientBlocked;
+    el.calSensorNote.style.display = sensorActive ? "none" : "block";
+  }
+
+  // =========================================================
+  // 手機方向偵測(A):角度只讀 DeviceOrientation 的 beta,而 beta 只有在手機「直向」
+  // 時才等於俯仰角;橫向時俯仰會跑到 gamma,beta 近乎固定且在 gamma≈±90° 附近會翻轉,
+  // 此時校正/鎖定都是錯的。本工具不改角度讀法,改為偵測橫向 → 蓋遮罩並停用校正與鎖定。
+  // =========================================================
+  // 姿勢判斷(主判斷;系統方向鎖開著時螢幕方向不會變,所以不能只看螢幕方向):
+  // 直立朝前(水平視線的校正姿勢)beta≈90°;橫拿時 beta≈0°、|gamma|≈90°;平放桌面 beta≈0°。
+  // isUprightBeta:45°≤|beta|≤135°(以 90° 為中心 ±45°),「只」用於校正歸零與舊校正(STALE)有效性——
+  // 校正是對準水平線,此時 beta≈90°。
+  function isUprightBeta(b) { var a = Math.abs(b); return a >= 45 && a <= 135; }
+  // 「量測中」的姿勢判斷,與 isUprightBeta 用途不同(量測時要能仰望樹頂 beta≈160°、俯視樹基 beta≈40°)。
+  // 不直接用 gamma(beta=±90° 是歐拉角奇異點,直立時 gamma 會跳動),改用重力方向:
+  //   world up 在裝置座標的分量(R=Rz(α)Rx(β)Ry(γ) 第三列):ux = −cosβ·sinγ,uy = sinβ(uz = cosβ·cosγ)。
+  // 兩種狀態:
+  //   poseLandscape(橫拿):|ux| > |uy|。
+  //   poseSteep(太陡或放平):非橫拿且 |uy| < 0.3。0.3 ≈ 仰角 72.5°:再陡 tan 值暴增、誤差過大,量測不可靠;
+  //                          另一端 uy≈0 即手機平放,同樣無法瞄準。
+  //   驗算:直立仰 70°(β=160,γ≈0)uy=.34、ux≈0 通過;俯 50°(β=40)uy=.64 通過;
+  //        橫拿(γ≈±90)|ux|≈1>|uy| → landscape;平放(β≈0,γ≈0)uy≈0 → steep。
+  // 數值遲滯(避免臨界閃爍):steep 進入 |uy|<0.30、解除需 |uy|>0.36;
+  //   landscape 進入 |ux|>1.1·|uy|、解除需 |ux|<0.9·|uy|。
+  var poseLandscape = false, poseSteep = false;
+  function updatePoseState() { // 回傳是否有狀態改變
+    var pl = poseLandscape, ps = poseSteep;
+    if (rawBeta === null) { poseLandscape = false; poseSteep = false; return pl || ps; }
+    var b = rawBeta * Math.PI / 180, g = (typeof rawGamma === "number" ? rawGamma : 0) * Math.PI / 180;
+    var ax = Math.abs(Math.cos(b) * Math.sin(g)), ay = Math.abs(Math.sin(b));
+    // 平放時 ax、ay 都很小,比值會被雜訊放大;加絕對下限(進入需 ax>0.5、解除 ax<0.4),兩者都小一律歸 steep,不判橫拿
+    poseLandscape = pl ? !(ax < ay * 0.9 || ax < 0.4) : (ax > ay * 1.1 && ax > 0.5);
+    poseSteep = !poseLandscape && (ps ? !(ay > 0.36) : (ay < 0.30));
+    return pl !== poseLandscape || ps !== poseSteep;
+  }
+  var ORIENT_SETTLE_MS = 600;
+  var curOrient = "portrait";       // 目前方向:"portrait" | "landscape"
+  var screenLandscape = false;      // 螢幕方向(輔助判斷)為橫向
+  var orientLandscape = false;      // 螢幕橫向且生效(粗指標裝置,或已收到過感測值;桌機滑鼠不擋)
+  var orientBlocked = false;        // 「橫拿」= orientLandscape || poseLandscape:蓋遮罩並停用校正/鎖定/拍攝(poseSteep 另計,只停用鎖定+提示)
+  var orientSettling = false;       // 剛轉向的緩衝期,等 beta 穩定
+  var orientSettleTimer = null;
+  var calOrient = null;             // 校正當下的方向(levelCal.orient;舊資料為 null)
+  var orientChangedSinceCal = false; // 校正後曾轉向(本次開啟 App 期間)
+
+  function readScreenOrient() {
+    // 用旋轉角度(90/270 才算橫),不用 type 字串(type 是絕對方向,自然方向為橫向的平板會誤判)
+    try {
+      if (window.screen && screen.orientation && typeof screen.orientation.angle === "number") {
+        var ang = ((screen.orientation.angle % 360) + 360) % 360;
+        return (ang === 90 || ang === 270) ? "landscape" : "portrait";
+      }
+    } catch (e) {}
+    if (typeof window.orientation === "number") {
+      var wa = Math.abs(window.orientation);
+      return (wa === 90 || wa === 270) ? "landscape" : "portrait";
+    }
+    try {
+      if (window.matchMedia) return window.matchMedia("(orientation: portrait)").matches ? "portrait" : "landscape";
+    } catch (e) {}
+    return "portrait";
+  }
+  function isCoarsePointer() {
+    try { return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); } catch (e) { return false; }
+  }
+  // 螢幕方向 = 螢幕「相對裝置自然方向」的旋轉角(angle 90/270 才算橫);桌機 angle=0 → 直向,不會誤擋。
+  // 自然方向為橫向的平板在正常拿法 angle=0,不會被當橫向,由姿勢判斷(重力方向)涵蓋。
+  function currentOrient() { return readScreenOrient(); }
+  // 舊校正疑似橫拿做的(讀回 levelCal 時 zeroRef 不在直立範圍 isUprightBeta)
+  var staleCal = false;
+  function orientHintOn() { // 「方向改變過」:只在已校正、且校正後曾真的處於不可量測姿勢時
+    if (orientBlocked) return false;
+    return calibrated && (orientChangedSinceCal || (calOrient !== null && calOrient !== "portrait"));
+  }
+  function orientHintMsg() {
+    return staleCal ? "先前的校正可能是橫拿做的,請直拿重新校正" : "方向改變過,建議重新校正";
+  }
+  // 重算「是否擋下」:螢幕方向 + 實際姿勢。initial=true(App 開啟時/第一次收到感測值)不算「轉向」。
+  function updateBlocked(initial) {
+    orientLandscape = screenLandscape && (rawBeta !== null || isCoarsePointer());
+    var nb = orientLandscape || poseLandscape;
+    // 「方向改變過」只在已校正後進入橫拿/螢幕橫向才記;steep/放平不算
+    if (nb && !orientBlocked && calibrated && !initial) orientChangedSinceCal = true;
+    if (!nb && orientBlocked && !initial) startOrientSettle(); // 由橫拿轉回直拿:同樣進穩定期
+    orientBlocked = nb;
+    applyOrientationUI();
+  }
+  function applyOrientationUI() {
+    // 量測頁遮罩顯示與否由 updateMeasureView 決定(凍結時不遮);設定頁校正區遮罩跟著橫拿狀態
+    el.orientMaskSettings.style.display = orientBlocked ? "flex" : "none";
+    el.calArea.className = "cal-area" + (orientBlocked ? " masked" : "");
+    if (orientBlocked) clearPendingLock();
+    el.orientHintText.textContent = orientHintMsg();
+    showMsg(el.orientChangedMsg, (orientHintOn() || (staleCal && !orientBlocked)) ? orientHintMsg() : "", "warn");
+    updateSensorButtonsState();
+    updateMeasureView();
+  }
+  // 穩定期:停用鎖定與校正 ORIENT_SETTLE_MS,等 beta 穩定;螢幕轉向與姿勢由橫拿轉回直拿共用同一套
+  function startOrientSettle() {
+    orientSettling = true;
+    if (orientSettleTimer) clearTimeout(orientSettleTimer);
+    orientSettleTimer = setTimeout(function () {
+      orientSettling = false;
+      orientSettleTimer = null;
+      updateSensorButtonsState();
+    }, ORIENT_SETTLE_MS);
+  }
+  function updateOrientation(initial) {
+    var o = currentOrient();
+    if (o !== curOrient && !initial) {
+      curOrient = o;
+      clearPendingLock();
+      startOrientSettle();
+    } else {
+      curOrient = o;
+    }
+    screenLandscape = (o === "landscape");
+    updateBlocked(initial);
+  }
+  function onOrientEvent() {
+    updateOrientation(false);
+    setTimeout(function () { updateOrientation(false); }, 300); // iOS 轉向時 innerWidth/Height 會晚一拍才更新
+  }
+  window.addEventListener("orientationchange", onOrientEvent);
+  window.addEventListener("resize", function () { updateOrientation(false); });
+  try {
+    if (window.screen && screen.orientation && screen.orientation.addEventListener) {
+      screen.orientation.addEventListener("change", onOrientEvent);
+    }
+  } catch (e) {}
+
+  el.btnEnableSensor.addEventListener("click", requestSensorAccess);
+
+  // M1:快速連點「啟用感測器」可能在 iOS 的 requestPermission() 這個非同步
+  // 空檔內被觸發多次,導致多個 promise 都呼叫 attachSensor() 重複註冊
+  // deviceorientation listener。用 sensorActive 旗標防重入,並在等待期間
+  // 先鎖住按鈕,失敗才解鎖讓使用者能重試。
+  // 感測器錯誤同時顯示在啟用遮罩內與相機上方的提示條旁(遮罩隱藏時使用者才看得到)
+  var sensorErrText = "";
+  var IOS_MOTION_HINT = "iOS 請到「設定 > Safari > 動作與方向取用」開啟後,重新整理本頁再試。";
+  function setSensorError(text) {
+    sensorErrText = text;
+    showMsg(el.sensorError, text);
+    updateMeasureView();
+  }
+  function requestSensorAccess() {
+    if (sensorActive) return;
+    el.btnEnableSensor.disabled = true;
+    setSensorError("");
+
+    if (typeof DeviceOrientationEvent === "undefined") {
+      el.btnEnableSensor.disabled = false;
+      setSensorError("此裝置或瀏覽器不支援方向感測器,無法使用傾角量測功能。");
+      return;
+    }
+
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission()
+        .then(function (state) {
+          if (state === "granted") {
+            attachSensor();
+          } else {
+            el.btnEnableSensor.disabled = false;
+            setSensorError("感測器權限被拒絕。請確認本頁面以 HTTPS 開啟。" + IOS_MOTION_HINT);
+          }
+        })
+        .catch(function (err) {
+          el.btnEnableSensor.disabled = false;
+          setSensorError(
+            "要求感測器權限失敗,請確認本頁面以 HTTPS 開啟。" + IOS_MOTION_HINT + "(" +
+              (err && err.message ? err.message : err) +
+              ")"
+          );
+        });
+    } else {
+      attachSensor();
+    }
+  }
+
+  function attachSensor() {
+    if (sensorActive) return; // 防重入:避免重複 addEventListener("deviceorientation", ...)
+    window.addEventListener("deviceorientation", handleOrientation);
+    sensorActive = true;
+    el.btnEnableSensor.style.display = "none";
+    updateOrientation(true); // 感測器啟用後橫向遮罩條件改變,重算一次
+    updateSensorButtonsState();
+    updateBanner();
+  }
+
+  el.btnCalibrate.addEventListener("click", function () {
+    if (rawBeta === null || orientBlocked || orientSettling) return; // 橫拿/剛轉向時不接受校正(太陡/放平交給 isUprightBeta 提示)
+    if (!isUprightBeta(rawBeta)) { // 校正要對準水平線(beta≈90°),平放/過度傾斜 → 拒絕;門檻理由見 isUprightBeta
+      showMsg(el.calibrateMsg, "請把手機直立(螢幕朝向自己)再校正。", "error");
+      return;
+    }
+    zeroRef = rawBeta;
+    calibrated = true;
+    staleCal = false;
+    calOrient = curOrient;           // 記下校正當下的方向
+    orientChangedSinceCal = false;
+    saveLevelCal(true);
+    updateAngleDisplay();
+    applyOrientationUI();
+    updateSensorButtonsState();
+    showMsg(el.calibrateMsg, "已校正並記住:目前顯示的仰角以此刻為水平線(0°)。", "ok");
+    updateBanner();
+  });
+
+  el.invertToggle.addEventListener("change", function () {
+    SIGN = el.invertToggle.checked ? 1 : -1;
+    saveLevelCal(); // 反轉方向也一併記住(沒校正過時只存 invert)
+    updateAngleDisplay();
+  });
+
+  // ---- 校正值持久化:key = cmytrees.levelCal,JSON { zeroRef, invert, savedAt, orient } ----
+  // invert 對應「反轉角度方向」開關狀態(true = SIGN +1,即預設)。
+  // 尚未校正時 zeroRef 存 null,讀回時 calibrated 維持 false。全部包 try/catch。
+  function saveLevelCal(stamp) {
+    try {
+      if (stamp) levelCalSavedAt = new Date().toISOString(); // 只有按「校正歸零」才更新時間
+      localStorage.setItem(LEVELCAL_KEY, JSON.stringify({
+        zeroRef: calibrated ? zeroRef : null,
+        invert: SIGN === 1,
+        savedAt: calibrated ? levelCalSavedAt : null,
+        orient: calibrated ? calOrient : null // 校正當下手機方向(新欄位;舊資料沒有則讀回 null)
+      }));
+    } catch (e) {}
+    refreshCalTime();
+  }
+
+  function loadLevelCal() {
+    try {
+      var raw = localStorage.getItem(LEVELCAL_KEY);
+      if (!raw) return;
+      var p = JSON.parse(raw);
+      if (!p || typeof p !== "object") return;
+      if (typeof p.invert === "boolean") {
+        SIGN = p.invert ? 1 : -1;
+        el.invertToggle.checked = p.invert;
+      }
+      if (typeof p.zeroRef === "number" && isFinite(p.zeroRef) && !isUprightBeta(p.zeroRef)) {
+        // 直立校正的 zeroRef 應≈90(45–135);範圍外多半是橫拿/平放(beta≈0)時存下的錯值,視為無效(invert 已先讀回保留)
+        staleCal = true;
+      } else if (typeof p.zeroRef === "number" && isFinite(p.zeroRef) && Math.abs(p.zeroRef) <= 180) {
+        zeroRef = p.zeroRef;
+        calibrated = true;
+        levelCalSavedAt = typeof p.savedAt === "string" ? p.savedAt : null;
+        calOrient = (p.orient === "portrait" || p.orient === "landscape") ? p.orient : null;
+      }
+    } catch (e) {}
+  }
+
+  function clearLevelCal() {
+    // 只清 zeroRef,保留「反轉角度方向」設定
+    zeroRef = 0;
+    calibrated = false;
+    levelCalSavedAt = null;
+    calOrient = null;
+    staleCal = false;
+    orientChangedSinceCal = false;
+    saveLevelCal(false);
+    updateAngleDisplay();
+    applyOrientationUI();
+    updateSensorButtonsState();
+    showMsg(el.calibrateMsg, "已清除校正(反轉方向設定保留),請重新「校正歸零」。", "info");
+    updateBanner();
+  }
+  el.btnClearCal.addEventListener("click", clearLevelCal);
+
+  function refreshCalTime() {
+    if (!calibrated) {
+      el.calTime.textContent = "尚未校正";
+      return;
+    }
+    var s = "";
+    try {
+      if (levelCalSavedAt) {
+        var d = new Date(levelCalSavedAt);
+        if (!isNaN(d.getTime())) s = d.toLocaleString("zh-Hant-TW");
+      }
+    } catch (e) {}
+    el.calTime.textContent = "上次校正:" + (s || "(時間未知)");
+  }
+
+  // 預設眼高 h:改了就記住,下次開 App 套用(key = cmytrees.eyeHeight)
+  function loadEyeHeight() {
+    try {
+      var v = parseFloat(localStorage.getItem(EYEHEIGHT_KEY));
+      if (isFinite(v) && v >= 0.3 && v <= 3) el.inputEyeH.value = String(v);
+    } catch (e) {}
+  }
+  el.inputEyeH.addEventListener("input", function () {
+    var v = parseFloat(el.inputEyeH.value);
+    if (!isFinite(v) || v < 0.3 || v > 3) return; // 只記合理眼高(0.3–3 m)
+    try { localStorage.setItem(EYEHEIGHT_KEY, String(v)); } catch (e) {}
+  });
+
+  // 從量測畫面的提示條直接前往設定做校正
+  function gotoCalibrate() {
+    switchTab("settings");
+    var lv = document.getElementById("level-section");
+    if (lv) lv.open = true;
+  }
+  el.btnGotoCalibrate.addEventListener("click", gotoCalibrate);
+  el.btnOrientGoto.addEventListener("click", gotoCalibrate);
+
+  // ---- 眼高「用身高換算」:身高 − 0.1 m,頁內輸入(不用 prompt/alert) ----
+  // 身高可填公分(例 165)或公尺(例 1.65):>=30 當公分、<=3 當公尺,其餘請使用者重填。
+  // 填入後觸發 input 事件,沿用既有的範圍檢查(0.3–3 m)、持久化與樹高重算。
+  el.btnEyeFromHeight.addEventListener("click", function () {
+    var open = !el.eyeConvert.classList.contains("open");
+    el.eyeConvert.classList.toggle("open", open);
+    showMsg(el.eyeConvertMsg, "");
+    if (open) { try { el.inputBodyH.focus(); } catch (e) {} }
+  });
+  el.btnEyeConvertCancel.addEventListener("click", function () {
+    el.eyeConvert.classList.remove("open");
+    showMsg(el.eyeConvertMsg, "");
+  });
+  el.btnEyeConvertOk.addEventListener("click", function () {
+    var v = parseFloat(el.inputBodyH.value);
+    var bodyM = null;
+    if (isFinite(v) && v >= 30) bodyM = v / 100;
+    else if (isFinite(v) && v > 0 && v <= 3) bodyM = v;
+    if (bodyM === null) {
+      showMsg(el.eyeConvertMsg, "請輸入身高:公分(例 165)或公尺(例 1.65)。");
+      return;
+    }
+    var eye = Math.round((bodyM - 0.1) * 100) / 100;
+    if (!isFinite(eye) || eye < 0.3 || eye > 3) {
+      showMsg(el.eyeConvertMsg, "換算後眼高 " + (isFinite(eye) ? eye.toFixed(2) : "?") + " m 不在合理範圍(0.3–3 m),請確認身高。");
+      return;
+    }
+    el.inputEyeH.value = String(eye);
+    el.inputEyeH.dispatchEvent(new Event("input", { bubbles: true }));
+    el.eyeConvert.classList.remove("open");
+    showMsg(el.eyeConvertMsg, "");
+    showToast("眼高已設為 " + eye.toFixed(2) + " m");
+  });
+
+  // ---- ① 樹高示意:預設收合;第一次使用自動展開一次並記住(cmytrees.seenHeightDemo) ----
+  (function initHeightDemo() {
+    try {
+      if (!localStorage.getItem("cmytrees.seenHeightDemo")) {
+        el.heightDemo.open = true;
+        localStorage.setItem("cmytrees.seenHeightDemo", "1");
+      }
+    } catch (e) {}
+  })();
+
+  // =========================================================
+  // 相機:啟用、畫面繪製、凍結、拖曳兩線
+  // =========================================================
+  // M1:快速連點「啟用相機」會在 getUserMedia() 這個非同步空檔內觸發第二次
+  // getUserMedia,造成兩條 rAF tick 迴圈與重複的 pointer 綁定。用
+  // cameraReady 防重入,並在等待期間鎖住按鈕,失敗才解鎖讓使用者重試。
+  function enableCamera() {
+    if (cameraReady) return;
+    el.btnEnableCamera.disabled = true;
+    showMsg(el.cameraMsg, "");
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      cameraAvailable = false;
+      el.btnEnableCamera.disabled = false;
+      showMsg(el.cameraMsg, "此瀏覽器不支援相機,已切換為純角度模式;量胸徑請於下方手動輸入。", "info");
+      applyCameraUnavailableUI();
+      return;
+    }
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(function (stream) {
+        el.cameraVideo.srcObject = stream;
+        el.cameraVideo.onloadedmetadata = function () {
+          if (cameraReady) return; // 防重入:避免 tick 迴圈/拖曳監聽被重複啟動
+          el.cameraVideo.play();
+          cameraReady = true;
+          cameraAvailable = true;
+          el.btnEnableCamera.style.display = "none";
+          el.dbhCameraBlock.style.display = "block";
+          el.dbhCameraUnavailable.style.display = "none";
+          // 先讓區塊顯示出來(display:block)之後再量尺寸,否則量到 0 → canvas 0×0 → 畫不出東西
+          setupCanvasSize();
+          attachDragHandlers();
+          requestAnimationFrame(tick);
+          updateBanner();
+        };
+      })
+      .catch(function (err) {
+        cameraAvailable = false;
+        el.btnEnableCamera.disabled = false;
+        showMsg(
+          el.cameraMsg,
+          "相機無法使用或權限被拒,已切換為純角度模式;量胸徑請於下方手動輸入。(" +
+            (err && err.message ? err.message : err) +
+            ")",
+          "info"
+        );
+        applyCameraUnavailableUI();
+      });
+  }
+  el.btnEnableCamera.addEventListener("click", enableCamera);
+
+  el.btnRetrySensor.addEventListener("click", function () {
+    if (!el.btnEnableSensor.disabled) requestSensorAccess();
+  });
+
+  // 量測頁中央的「啟用相機與感測器」:同一次使用者手勢內依序觸發兩者(iOS 權限需手勢)
+  el.btnEnableAll.addEventListener("click", function () {
+    if (!el.btnEnableSensor.disabled) requestSensorAccess();
+    enableCamera();
+  });
+
+  function applyCameraUnavailableUI() {
+    cameraAvailable = false;
+    el.btnEnableCamera.style.display = "none";
+    el.dbhCameraBlock.style.display = "none";
+    el.dbhCameraUnavailable.style.display = "block";
+    updateBanner();
+  }
+
+  function setupCanvasSize() {
+    // 先依影像比例鎖定取景框:aspect-ratio 跟著影像、框高上限 = 寬 × (videoHeight/videoWidth)。
+    // object-fit:cover 的縮放倍率因此只取決於框寬(框高只會 <= 影像等比高度),
+    // 不會左右裁切,各步驟(操作區高度不同)倍率一致,canvasW 與 f_px 的換算成立。
+    // (框高不足時只裁切影像上下;影像尺寸未知前先用 3:4。)
+    var vw = el.cameraVideo.videoWidth, vh = el.cameraVideo.videoHeight;
+    var aspect = vh / vw;
+    if (!isFinite(aspect) || aspect <= 0) aspect = 4 / 3;
+    el.cameraWrap.style.aspectRatio = (vw && vh) ? (vw + " / " + vh) : "3 / 4";
+
+    el.cameraWrap.style.maxHeight = ""; // 先清掉舊上限(轉向後影像比例可能不同)再量
+    var rect = el.cameraWrap.getBoundingClientRect();
+    var w = Math.round(rect.width);
+    if (!w || w <= 0) {
+      // 版面還沒量到寬度(例如剛 display:block),先用視窗寬度暫代,下一幀再重量
+      w = Math.round(Math.min(window.innerWidth || 360, 480));
+      requestAnimationFrame(setupCanvasSize);
+    }
+    el.cameraWrap.style.maxHeight = Math.round(w * aspect) + "px";
+    var h = Math.round(w * aspect);
+    if (rect.height > 0) h = Math.min(h, Math.round(rect.height)); // canvas 以實際框高為準
+    var oldW = canvasW, oldH = canvasH;
+    el.cameraCanvas.width = w;
+    el.cameraCanvas.height = h;
+    canvasW = w;
+    canvasH = h;
+    // 凍結中取景框尺寸改變:兩線依寬度等比搬移,快照從 frozenFrame 重畫(不讀 video)
+    if ((mode === "freeze-dbh" || mode === "freeze-fov") && (oldW !== w || oldH !== h)) {
+      if (oldW && oldW !== w) {
+        lineX = [lineX[0] * (w / oldW), lineX[1] * (w / oldW)];
+        if (mode === "freeze-dbh") updateDbhReadout(); else updateFovReadout();
+      }
+      renderFrozen(); // 從 frozenFrame 重繪(不讀 video);沒有 frozenFrame 就保留現狀
+    }
+  }
+
+  // 轉向/視窗大小改變時重量,避免 canvas 尺寸與畫面不一致
+  window.addEventListener("resize", function () {
+    if (cameraReady && el.cameraWrap.getBoundingClientRect().width > 0) setupCanvasSize();
+  });
+  // 影像串流解析度/方向改變(video 的 resize 事件)也要重算,aspect-ratio 才會跟上
+  el.cameraVideo.addEventListener("resize", function () {
+    if (cameraReady && el.cameraWrap.getBoundingClientRect().width > 0) setupCanvasSize();
+  });
+  // 切換步驟時操作區高度會變 → 取景框高度跟著變,需重量 canvas(隱藏分頁時寬度為 0,略過)
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(function () {
+      if (cameraReady && el.cameraWrap.getBoundingClientRect().width > 0) setupCanvasSize();
+    }).observe(el.cameraWrap);
+  }
+
+  // canvas 是「透明疊圖層」,不再把 video 畫進 canvas(iOS Safari 對
+  // drawImage(video,...) 常會失敗或丟例外,導致凍結/拖線整個壞掉)。
+  // video 元素本身負責視覺畫面(live 時播放、freeze 時 pause 停在最後一幀),
+  // canvas 每幀清空後只疊畫準星(live)或兩條拖曳線(freeze-*)。
+  function tick() {
+    if (cameraReady) {
+      ctx.clearRect(0, 0, canvasW, canvasH); // 必須每幀清空,否則疊圖殘影堆疊
+      if (mode === "live") {
+        drawCrosshair();
+      } else if (mode === "freeze-dbh" || mode === "freeze-fov") {
+        drawLines();
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function drawCrosshair() {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canvasW * 0.1, canvasH * 0.5);
+    ctx.lineTo(canvasW * 0.9, canvasH * 0.5);
+    ctx.moveTo(canvasW * 0.5, canvasH * 0.1);
+    ctx.lineTo(canvasW * 0.5, canvasH * 0.9);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(canvasW * 0.5, canvasH * 0.5, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,80,80,0.95)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 凍結時的兩條量測線:細線(黑邊 5px + 亮黃 2px,不遮樹幹邊緣),
+  // 拖曳把手(半徑 22px,直徑 44px)放在線的最下端(距取景框底約 12%),不擋樹幹本體。
+  // 觸控判定仍是整個畫面取最近的線(onPointerDown),不侷限於把手。
+  function drawLines() {
+    ctx.save();
+    var hy = Math.min(canvasH * 0.88, canvasH - 26);
+    for (var i = 0; i < lineX.length; i++) {
+      var x = lineX[i];
+      ctx.lineCap = "butt";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke();
+      ctx.strokeStyle = "#ffd600";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke();
+      ctx.fillStyle = "#ffd600";
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x, hy, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 20px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("\u25C0\u25B6", x, hy + 1);
+    }
+    ctx.restore();
+  }
+
+  function clientToCanvasX(clientX) {
+    var rect = el.cameraCanvas.getBoundingClientRect();
+    var scale = canvasW / rect.width;
+    return (clientX - rect.left) * scale;
+  }
+
+  function attachDragHandlers() {
+    el.cameraCanvas.addEventListener("pointerdown", onPointerDown);
+    el.cameraCanvas.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
+  function onPointerDown(e) {
+    if (mode !== "freeze-dbh" && mode !== "freeze-fov") return;
+    var x = clamp(clientToCanvasX(e.clientX), 0, canvasW);
+    var d0 = Math.abs(x - lineX[0]);
+    var d1 = Math.abs(x - lineX[1]);
+    // 拖曳兩條垂直線:抓最近的那條線移動,方便手指微調對齊樹幹邊緣
+    draggingIdx = d0 <= d1 ? 0 : 1;
+    lineX[draggingIdx] = x;
+    onLinesChanged();
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (draggingIdx === null) return;
+    lineX[draggingIdx] = clamp(clientToCanvasX(e.clientX), 0, canvasW);
+    onLinesChanged();
+    e.preventDefault();
+  }
+
+  function onPointerUp() { draggingIdx = null; }
+
+  function onLinesChanged() {
+    if (mode === "freeze-dbh") {
+      // H1:拖線改變 p_trunk → DBH 估值會變,先前算出的碳匯結果視為過期
+      invalidateCarbonResult();
+      updateDbhReadout();
+    } else if (mode === "freeze-fov") {
+      updateFovReadout();
+    }
+  }
+
+  // ---- 拍攝樹幹(凍結畫面量 DBH) ----
+  // 凍結 = 把當下影格畫到快照 canvas(疊在 video 上、拖線 canvas 下)並顯示,
+  // 同時 pause() video 省電。只靠 pause() 在部分手機上畫面不會停住(仍是即時畫面),
+  // 所以改以快照為準;drawImage 失敗(例外)時才退回只靠 pause()。
+  // 快照用與 setupCanvasSize 相同的座標系(canvasW×canvasH)與 cover 縮放,
+  // 拖線座標、DBH 換算(p/f_px,以 canvasW 為基準)完全不變。
+  var sctx = el.snapCanvas.getContext("2d");
+  var snapFailed = false; // 最近一次擷取失敗(黑圖/例外/影格未就緒):畫面提示使用者返回重拍
+  // 以 5×5 格點抽樣,全部近乎全黑視為黑圖(iOS 偶發擷到空白影格)
+  function isBlankCanvas(cv) {
+    var c = cv.getContext("2d");
+    for (var iy = 0; iy < 5; iy++) {
+      for (var ix = 0; ix < 5; ix++) {
+        var px = c.getImageData(Math.min(cv.width - 1, Math.round((ix + 0.5) * cv.width / 5)),
+                                Math.min(cv.height - 1, Math.round((iy + 0.5) * cv.height / 5)), 1, 1).data;
+        if (px[0] > 6 || px[1] > 6 || px[2] > 6) return false;
+      }
+    }
+    return true;
+  }
+  // frozenFrame:拍攝當下的原始影格(videoWidth×videoHeight,離屏 canvas)。
+  // iOS 上已暫停的 video 可能仍顯示即時影格,所以凍結後(含取景框尺寸改變重畫)
+  // 一律從 frozenFrame 依新的 cover 裁切重繪,不再讀 video,畫面與線位才不會錯開。
+  var frozenFrame = null;
+  function releaseFrozenFrame() {
+    if (frozenFrame) { frozenFrame.width = 0; frozenFrame.height = 0; }
+    frozenFrame = null;
+  }
+  // 把 frozenFrame 依目前 canvasW×canvasH 的 cover 縮放畫進快照層
+  function renderFrozen() {
+    try {
+      if (!frozenFrame || !frozenFrame.width || !canvasW || !canvasH) return false;
+      var vw = frozenFrame.width, vh = frozenFrame.height;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      el.snapCanvas.width = Math.round(canvasW * dpr);
+      el.snapCanvas.height = Math.round(canvasH * dpr);
+      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var sc = canvasW / vw; // 倍率只依寬度(只會上下裁切),與取景框 cover 一致
+      var dw = vw * sc, dh = vh * sc;
+      sctx.drawImage(frozenFrame, (canvasW - dw) / 2, (canvasH - dh) / 2, dw, dh);
+      el.snapCanvas.style.display = "block";
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  // 拍攝:從 video 擷取原始影格 → 黑圖檢查 → 存成 frozenFrame → 渲染快照層。
+  function takeSnapshot() {
+    try {
+      var v = el.cameraVideo;
+      var vw = v.videoWidth, vh = v.videoHeight;
+      if (v.readyState < 2 || !vw || !vh || !canvasW || !canvasH) return false;
+      var frame = document.createElement("canvas");
+      frame.width = vw;
+      frame.height = vh;
+      frame.getContext("2d", { willReadFrequently: true }).drawImage(v, 0, 0, vw, vh);
+      if (isBlankCanvas(frame)) { frame.width = 0; frame.height = 0; return false; }
+      releaseFrozenFrame();
+      frozenFrame = frame;
+      return renderFrozen();
+    } catch (e) {
+      return false;
+    }
+  }
+  function clearSnapshot() {
+    el.snapCanvas.style.display = "none";
+    snapFailed = false;
+    releaseFrozenFrame();
+  }
+  // 擷取並處理失敗:失敗時收起快照、退回只靠 pause(),並提示使用者
+  function snapshotOrWarn() {
+    clearSnapshot();
+    if (!takeSnapshot()) {
+      snapFailed = true;
+      showToast("凍結畫面失敗,請返回即時畫面再拍一次");
+    }
+  }
+  // 等「下一個影格」再回呼(rVFC 優先,否則兩次 rAF);另設逾時保底,確保只回呼一次
+  function afterNextVideoFrame(cb) {
+    var done = false;
+    function fire() { if (done) return; done = true; cb(); }
+    if (typeof el.cameraVideo.requestVideoFrameCallback === "function") {
+      el.cameraVideo.requestVideoFrameCallback(fire);
+    } else {
+      requestAnimationFrame(function () { requestAnimationFrame(fire); });
+    }
+    setTimeout(fire, 700);
+  }
+  function flashShutter() {
+    el.shutterFlash.classList.remove("flash");
+    void el.shutterFlash.offsetWidth; // 強制重排,讓動畫可重複觸發
+    el.shutterFlash.classList.add("flash");
+  }
+
+  var fovPending = false; // 焦距校正等待影格期間,停用「拍攝樹幹」避免狀態互相覆蓋
+  function setFovPending(b) {
+    fovPending = b;
+    updateSensorButtonsState();
+  }
+  function handleShootTrunk() {
+    if (!cameraReady || fovPending || orientBlocked) return;
+    clearPendingLock();
+    invalidateCarbonResult(); // H1:重新拍攝樹幹代表要重量 DBH,先前碳匯結果過期
+    snapshotOrWarn();
+    flashShutter();
+    el.cameraVideo.pause();
+    lineX = [canvasW * 0.35, canvasW * 0.65];
+    mode = "freeze-dbh";
+    hasTrunkShot = true; // 只有真的拍過樹幹,updateDbhReadout() 才能拿 lineX 算 DBH
+    el.btnRetakeTrunk.style.display = "block";
+    updateDbhReadout(); // 內部會呼叫 updateBanner() → updateMeasureView()
+  }
+  el.btnShootTrunk.addEventListener("click", handleShootTrunk);
+
+  function handleRetakeTrunk() {
+    invalidateCarbonResult(); // H1:返回即時畫面代表 DBH 來源可能改變(重拍或改用手動輸入)
+    clearSnapshot();
+    el.cameraVideo.play();
+    mode = "live";
+    hasTrunkShot = false; // 離開凍結畫面就不再有「有效的樹幹兩線」,DBH 讀值視為過期
+    el.btnRetakeTrunk.style.display = "none";
+    updateDbhReadout(); // 清掉可能過期的 cameraDbhEstimateM,顯示「尚未拍攝樹幹」
+    updateBanner(); // 觸發 updateMeasureView()
+  }
+  el.btnRetakeTrunk.addEventListener("click", handleRetakeTrunk);
+
+  // ---- 拍攝校正物(凍結畫面做 FOV 校正,同樣改用 pause) ----
+  // 入口在「設定」分頁:按下後切到量測分頁,共用同一個 video 凍結取景(不開第二個相機串流);
+  // 校正完成或取消後自動回到設定分頁。拍攝中量測分頁只顯示 FOV 面板(見 updateMeasureView)。
+  el.btnShootFov.addEventListener("click", function () {
+    showMsg(el.fovMsgSettings, "");
+    if (orientBlocked) {
+      showMsg(el.fovMsgSettings, "請把手機直立(螢幕朝向自己)再拍攝。");
+      return;
+    }
+    if (!cameraReady) {
+      showMsg(el.fovMsgSettings, "請先到「量測」分頁按「啟用相機與感測器」,再回來做焦距校正。", "info");
+      return;
+    }
+    // 輸入框在設定頁,拍攝前先驗證,避免切到量測畫面後才發現沒填
+    var w0 = parseFloat(el.inputFovWreal.value);
+    var l0 = parseFloat(el.inputFovL.value);
+    if (!isFinite(w0) || w0 <= 0 || !isFinite(l0) || l0 <= 0) {
+      showMsg(el.fovMsgSettings, "請先填入校正物實際寬度 W_real 與拍攝距離 L(公尺,大於0)。");
+      return;
+    }
+    if (hasTrunkShot) { // 含「凍結後按鎖定已回即時畫面」的情況:兩線與 DBH 仍在,開始校正就會放棄
+      document.getElementById("fov-confirm").style.display = "block"; // 頁內確認,不用原生對話框
+      return;
+    }
+    startFovShoot();
+  });
+  document.getElementById("btn-fov-confirm-no").addEventListener("click", function () {
+    document.getElementById("fov-confirm").style.display = "none";
+  });
+  document.getElementById("btn-fov-confirm-yes").addEventListener("click", function () {
+    document.getElementById("fov-confirm").style.display = "none";
+    startFovShoot();
+  });
+
+  function startFovShoot() {
+    el.btnRetakeTrunk.style.display = "none"; // 胸徑拍攝將被放棄
+    clearSnapshot();
+    if (mode === "freeze-dbh") mode = "live";
+    switchTab("measure"); // 先顯示量測分頁,才量得到取景框尺寸
+    setupCanvasSize();
+    setFovPending(true);
+    // 分頁剛顯示/影片可能剛被暫停:先 play(),等下一個影格再擷取,避免擷到空白或舊影格
+    var pr = el.cameraVideo.play();
+    if (pr && pr.catch) pr.catch(function () {});
+    afterNextVideoFrame(finishFovShoot);
+  }
+
+  function finishFovShoot() {
+    if (!fovPending) return; // 已被處理過(rVFC 與逾時保底只會有一次生效)
+    setFovPending(false);
+    if (mode !== "live" || currentTab !== "measure") return; // 等待期間狀態已變(已凍結/離開分頁)就放棄
+    snapshotOrWarn();
+    flashShutter();
+    el.cameraVideo.pause();
+    lineX = [canvasW * 0.35, canvasW * 0.65];
+    mode = "freeze-fov";
+    // FOV 校正物的兩線位置跟樹幹無關;若使用者做過 FOV 校正卻沒拍樹幹,
+    // 不能讓 updateDbhReadout() 誤用這裡的 lineX 去算出一個假的 DBH。
+    hasTrunkShot = false;
+    invalidateCarbonResult(); // DBH 讀值即將被清空,連帶讓可能引用舊 DBH 的碳匯結果過期
+    el.btnRetakeFov.style.display = "block";
+    el.btnSaveFov.style.display = "block";
+    showMsg(el.fovMsg, "");
+    updateFovReadout();
+    updateDbhReadout(); // 內部呼叫 updateBanner() → updateMeasureView(),顯示 FOV 面板
+  }
+
+  // 結束焦距校正拍攝(取消、儲存完成、或切離量測分頁都走這裡):恢復即時畫面
+  function leaveFovMode() {
+    clearSnapshot();
+    var pr = el.cameraVideo.play();
+    if (pr && pr.catch) pr.catch(function () {});
+    mode = "live";
+    hasTrunkShot = false; // 回到即時畫面,一樣沒有「拍過樹幹」這件事
+    el.btnRetakeFov.style.display = "none";
+    el.btnSaveFov.style.display = "none";
+    updateDbhReadout();
+  }
+
+  el.btnRetakeFov.addEventListener("click", function () {
+    leaveFovMode();
+    switchTab("settings");
+    el.fovSection.open = true;
+  });
+
+  // =========================================================
+  // FOV / 焦距校正
+  // =========================================================
+  (function loadSavedFov() {
+    try {
+      var raw = localStorage.getItem("arMeasureFovCal");
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && isFinite(parsed.fpx) && parsed.fpx > 0 && isFinite(parsed.canvasW) && parsed.canvasW > 0) {
+          fovCal = parsed;
+        }
+      }
+    } catch (e) {}
+  })();
+
+  function getEffectiveFpx() {
+    if (!canvasW) return null;
+    var fpx, source;
+    if (fovCal) {
+      // f_px 與影像寬度成正比(針孔模型固定視角下),換算到目前 canvas 寬度基準
+      fpx = fovCal.fpx * (canvasW / fovCal.canvasW);
+      source = "calibrated";
+    } else {
+      fpx = (canvasW / 2) / Math.tan(deg2rad(33));
+      source = "default";
+    }
+    if (!isFinite(fpx) || fpx <= 0) return null;
+    var hfov = (2 * Math.atan((canvasW / 2) / fpx) * 180) / Math.PI;
+    return { fpx: fpx, source: source, hfovDeg: hfov };
+  }
+
+  function refreshFovStatus() {
+    var eff = getEffectiveFpx();
+    if (!eff) {
+      el.fovStatus.textContent = "尚未開啟相機,無法顯示焦距狀態。";
+      return;
+    }
+    if (eff.source === "calibrated") {
+      el.fovStatus.textContent =
+        "已校正:f_px ≈ " + eff.fpx.toFixed(0) + " px(對應水平視角 HFOV ≈ " + eff.hfovDeg.toFixed(1) + "°)。";
+    } else {
+      el.fovStatus.textContent =
+        "尚未校正:目前使用預設 f_px ≈ " + eff.fpx.toFixed(0) + " px(假設 HFOV≈66°),DBH 為粗估。";
+    }
+  }
+
+  function updateFovReadout() {
+    var p = Math.abs(lineX[1] - lineX[0]);
+    el.fovPxReadout.textContent = "校正物兩線間距 p_cal = " + p.toFixed(1) + " px";
+  }
+
+  el.btnSaveFov.addEventListener("click", function () {
+    showMsg(el.fovMsg, "");
+    var wreal = parseFloat(el.inputFovWreal.value);
+    var L = parseFloat(el.inputFovL.value);
+    if (!isFinite(wreal) || wreal <= 0) {
+      showMsg(el.fovMsg, "請輸入有效的校正物實際寬度(公尺,大於0)。");
+      return;
+    }
+    if (!isFinite(L) || L <= 0) {
+      showMsg(el.fovMsg, "請輸入有效的拍攝距離(公尺,大於0)。");
+      return;
+    }
+    var p = Math.abs(lineX[1] - lineX[0]);
+    if (p <= 0) {
+      showMsg(el.fovMsg, "兩條線重疊,請拉開兩線並對齊校正物左右邊緣。");
+      return;
+    }
+    var fpx = (p * L) / wreal;
+    if (!isFinite(fpx) || fpx <= 0) {
+      showMsg(el.fovMsg, "計算結果異常,請確認輸入數值與兩線位置後重試。");
+      return;
+    }
+    fovCal = { fpx: fpx, canvasW: canvasW };
+    try { localStorage.setItem("arMeasureFovCal", JSON.stringify(fovCal)); } catch (e) {}
+    refreshFovStatus();
+    leaveFovMode();
+    switchTab("settings");
+    el.fovSection.open = true;
+    showMsg(el.fovMsgSettings, "已儲存焦距校正,下次開啟會自動套用。", "ok");
+  });
+
+  el.btnClearFov.addEventListener("click", function () {
+    fovCal = null;
+    try { localStorage.removeItem("arMeasureFovCal"); } catch (e) {}
+    showMsg(el.fovMsgSettings, "已清除校正,改用預設 f_px。", "info");
+    refreshFovStatus();
+    if (mode === "freeze-dbh") updateDbhReadout();
+  });
+
+  // =========================================================
+  // 樹基 / 樹頭 鎖定與樹高計算
+  // =========================================================
+  // 共用 handler:下方原按鈕與相機畫面上的浮動按鈕都呼叫同一個函式,
+  // 對準時不用捲動頁面也能鎖定角度,計算邏輯完全不變。
+  // 凍結胸徑畫面時按鎖定:先恢復即時畫面(不清除兩線、DBH 與碳匯結果),
+  // 請使用者對準後再按一次;之後鎖定角度會沿用原版行為,以同一組兩線+新 D 重算胸徑。
+  // 被按的那顆鎖定鈕會持續閃爍,表示等第二次按下才真正鎖定;
+  // 改按另一顆、切分頁/步驟、重設、重新拍攝樹幹都會清除閃爍。
+  var pendingLock = null; // null | "base" | "top"
+  function clearPendingLock() {
+    pendingLock = null;
+    el.btnLockBase.classList.remove("blink");
+    el.btnLockTop.classList.remove("blink");
+  }
+  function resumeLiveKeepTrunk(which) {
+    if (mode !== "freeze-dbh") {
+      clearPendingLock(); // 第二次按下(或本來就是即時畫面):停止閃爍並照常鎖定
+      return false;
+    }
+    clearSnapshot();
+    var pr = el.cameraVideo.play();
+    if (pr && pr.catch) pr.catch(function () {});
+    mode = "live";
+    el.btnRetakeTrunk.style.display = "none";
+    clearPendingLock();
+    pendingLock = which;
+    (which === "base" ? el.btnLockBase : el.btnLockTop).classList.add("blink");
+    updateBanner();
+    showToast("對準後再按一次閃爍的鎖定鈕");
+    return true;
+  }
+
+  // ---- 鎖定成功回饋(E):畫面中央大字淡入淡出 1.5 秒 + 震動 + 按鈕變灰顯示數值 ----
+  function fmtDeg(a) { var r = Math.round(a * 10) / 10; if (r === 0) return "0.0\u00B0"; return (r < 0 ? "\u2212" : "+") + Math.abs(r).toFixed(1) + "\u00B0"; } // 避免 −0.0°
+  var lockFlashTimer = null;
+  function showLockSuccess(which, a) {
+    var label = which === "base" ? "樹基" : "樹頂";
+    var btn = which === "base" ? el.btnLockBase : el.btnLockTop;
+    btn.classList.add("locked");
+    btn.textContent = "\u2713 " + label + " " + fmtDeg(a) + "(再按重新量)";
+    (which === "base" ? el.baseValue : el.topValue).classList.add("locked-val");
+    el.lockFlash.textContent = "\u2713 " + label + " " + fmtDeg(a);
+    el.lockFlash.classList.remove("show");
+    void el.lockFlash.offsetWidth; // 強制重排,連續鎖定時動畫可重播
+    el.lockFlash.classList.add("show");
+    if (lockFlashTimer) clearTimeout(lockFlashTimer);
+    lockFlashTimer = setTimeout(function () { el.lockFlash.classList.remove("show"); lockFlashTimer = null; }, 1500);
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+  }
+  // 重設/存檔後:兩顆鎖定鈕與數值恢復原狀
+  function resetLockButtons() {
+    el.btnLockBase.classList.remove("locked");
+    el.btnLockTop.classList.remove("locked");
+    el.btnLockBase.textContent = "鎖定樹基";
+    el.btnLockTop.textContent = "鎖定樹頂";
+    el.baseValue.classList.remove("locked-val");
+    el.topValue.classList.remove("locked-val");
+    el.lockFlash.classList.remove("show");
+  }
+
+  // 函式內防護(不只靠 disabled):橫向/姿勢不符/剛轉向時一律不鎖定
+  function lockGuard() {
+    if (orientBlocked || orientSettling) {
+      showMsg(el.baseMsg, "請把手機直立(螢幕朝向自己)再鎖定。");
+      return true;
+    }
+    if (poseSteep) {
+      showMsg(el.baseMsg, "角度太陡(或手機太平),請退後幾步再量。");
+      return true;
+    }
+    return false;
+  }
+  function handleLockBase() {
+    if (lockGuard()) return;
+    if (resumeLiveKeepTrunk("base")) return;
+    showMsg(el.baseMsg, "");
+    var a = currentAngle();
+    if (a === null || !isFinite(a)) {
+      showMsg(el.baseMsg, "尚未取得角度,請確認感測器已啟用並完成校正。");
+      return;
+    }
+    if (a >= 0) {
+      showMsg(
+        el.baseMsg,
+        "樹基角度必須為負值(俯角),目前讀到 " + a.toFixed(1) + "°,請將準星對準樹基(比水平線更低的位置)後再試一次。"
+      );
+      return;
+    }
+    capturedBaseDeg = a;
+    el.baseValue.textContent = fmtDeg(a);
+    showLockSuccess("base", a);
+    tryComputeHeightDistance();
+    updateBanner();
+  }
+  el.btnLockBase.addEventListener("click", handleLockBase);
+
+  function handleLockTop() {
+    if (lockGuard()) return;
+    if (resumeLiveKeepTrunk("top")) return;
+    var a = currentAngle();
+    if (a === null || !isFinite(a)) {
+      showMsg(el.baseMsg, "尚未取得角度,請確認感測器已啟用並完成校正。");
+      return;
+    }
+    capturedTopDeg = a;
+    el.topValue.textContent = fmtDeg(a);
+    showLockSuccess("top", a);
+    tryComputeHeightDistance();
+    updateBanner();
+  }
+  el.btnLockTop.addEventListener("click", handleLockTop);
+
+  // H1:改眼高/改實測距離都會改變 H,先前算出的碳匯結果先視為過期;
+  // tryComputeHeightDistance() 內部本身就會呼叫 invalidateCarbonResult(),
+  // 兩個輸入框的 handler 不再各自重複呼叫一次(比照 inputEyeH 原本的寫法)。
+  el.inputEyeH.addEventListener("input", tryComputeHeightDistance);
+  el.inputManualDist.addEventListener("input", tryComputeHeightDistance);
+
+  // 對角度 ±1° 取最壞組合,估計樹高 H 的不確定度範圍。
+  //   mode==="estimated":D 本身也是由 baseDeg 推算出來的,baseDeg 的誤差同時
+  //     影響 D 與 H,兩個角度各自 ±1° 的正負號組合對 H 的影響方向不一定一致,
+  //     所以窮舉 baseDeg×topDeg 共 4 種角度組合取最小/最大值才是真正的最壞範圍。
+  //   mode==="manual":距離 D 是實測值(視為已知定數),只有 topDeg 的 ±1° 會
+  //     影響 H,只需兩種組合。
+  // 兩種模式共用同一份公式邏輯,避免複製貼上四次。
+  //
+  // 候選角度「夾住」而非「丟棄」:±1° 候選若超出 BASE_ANGLE_MIN_DEG / TOP_ANGLE_MAX_DEG
+  // 門檻,改夾到門檻邊界值繼續參與計算,不直接跳過該候選 —— 之前用 continue 整組跳過會
+  // 讓範圍單邊塌陷(例如只剩「兩個角度都往同一邊夾」的組合被排除,導致範圍反而比點估計
+  // 窄,甚至不包含點估計 H 本身)。同時把「夾到邊界」這件事記成 clamped 旗標,回傳給呼叫端
+  // 在畫面上加註提醒。算出的 H 候選另外夾到 >=0(不可為負);並把 nominal H(點估計值)也
+  // push 進候選清單,用數學上保證 lo <= nominalH <= hi,不會出現範圍不含點估計的情況。
+  function computeHeightRange(mode, h, baseDeg, topDeg, manualD, nominalH) {
+    var candidates = [];
+    var clamped = false;
+
+    if (isFinite(nominalH) && nominalH > 0) candidates.push(nominalH);
+
+    function clampTop(deg) {
+      if (Math.abs(deg) >= TOP_ANGLE_MAX_DEG) {
+        clamped = true;
+        return deg < 0 ? -TOP_ANGLE_MAX_DEG : TOP_ANGLE_MAX_DEG;
+      }
+      return deg;
+    }
+    function clampBase(deg) {
+      if (Math.abs(deg) <= BASE_ANGLE_MIN_DEG) {
+        clamped = true;
+        return deg < 0 ? -BASE_ANGLE_MIN_DEG : BASE_ANGLE_MIN_DEG;
+      }
+      return deg;
+    }
+
+    var topCandidates = [clampTop(topDeg - 1), clampTop(topDeg + 1)];
+
+    if (mode === "manual") {
+      for (var i = 0; i < topCandidates.length; i++) {
+        var Hm = h + manualD * Math.tan(deg2rad(topCandidates[i]));
+        if (isFinite(Hm)) candidates.push(Math.max(0, Hm));
+      }
+    } else {
+      var baseCandidates = [clampBase(baseDeg - 1), clampBase(baseDeg + 1)];
+      for (var j = 0; j < baseCandidates.length; j++) {
+        var tanB = Math.tan(deg2rad(baseCandidates[j]));
+        // tanB===0 理論上不會發生(BASE_ANGLE_MIN_DEG>0 保證夾完後角度不為 0),
+        // 這裡只是防止真正的數學異常,不是業務門檻篩選,所以照樣不算「丟棄候選」。
+        if (!isFinite(tanB) || tanB === 0) continue;
+        var Dj = -h / tanB;
+        if (!isFinite(Dj) || Dj <= 0) continue;
+        for (var k = 0; k < topCandidates.length; k++) {
+          var He = h + Dj * Math.tan(deg2rad(topCandidates[k]));
+          if (isFinite(He)) candidates.push(Math.max(0, He));
+        }
+      }
+    }
+    if (candidates.length === 0) return null;
+    return {
+      lo: Math.min.apply(null, candidates),
+      hi: Math.max.apply(null, candidates),
+      clamped: clamped
+    };
+  }
+
+  function showHeightRange(mode, h, baseDeg, topDeg, manualD, nominalH) {
+    var range = computeHeightRange(mode, h, baseDeg, topDeg, manualD, nominalH);
+    if (!range) {
+      el.resultHRange.textContent = "";
+      return;
+    }
+    var note = range.clamped ? "(角度接近極限,實際誤差可能更大)" : "";
+    el.resultHRange.textContent =
+      "±1°角度誤差 → 樹高範圍約 " + range.lo.toFixed(2) + "–" + range.hi.toFixed(2) + " m" + note;
+  }
+
+  // 共用收尾:tryComputeHeightDistance() 的每個早退/錯誤分支都要呼叫,
+  // 確保 DBH 讀值(可能因 D 被清成 null 而過期)與 banner 提示文字同步更新,
+  // 不會停留在上一次成功計算時的舊畫面。
+  function finishHeightAttempt() {
+    updateDbhReadout();
+    updateBanner();
+  }
+
+  function tryComputeHeightDistance() {
+    // H1:重新鎖定樹基/樹頭、改眼高或改實測距離都會改變 H,先前算出的碳匯結果先視為過期
+    invalidateCarbonResult();
+    showMsg(el.heightError, "");
+    showMsg(el.heightInfo, "");
+    el.heightResultBox.style.display = "none";
+    el.resultHRange.textContent = "";
+    D = null;
+    H = null;
+    dSource = null;
+
+    // 只有「真的填了東西」才算使用者要用實測距離;純空字串一律走俯角推算,
+    // 不把 parseFloat("") === NaN 這種情況跟「填了無效值」混為一談。
+    var manualDistRaw = el.inputManualDist.value.trim();
+    var manualDProvided = manualDistRaw !== "";
+    var manualD = parseFloat(manualDistRaw);
+
+    if (manualDProvided && (!isFinite(manualD) || manualD < MANUAL_D_MIN || manualD > MANUAL_D_MAX)) {
+      showMsg(el.heightError, "實測距離請填 " + MANUAL_D_MIN + "–" + MANUAL_D_MAX + " 公尺。");
+      finishHeightAttempt();
+      return;
+    }
+    var manualDValid = manualDProvided;
+
+    if (!manualDValid && (capturedBaseDeg === null || capturedTopDeg === null)) {
+      finishHeightAttempt();
+      return;
+    }
+    if (manualDValid && capturedTopDeg === null) {
+      finishHeightAttempt();
+      return;
+    }
+
+    var h = parseFloat(el.inputEyeH.value);
+    if (!isFinite(h) || h <= 0) {
+      showMsg(el.heightError, "請輸入有效的眼睛/手機離地高度 h(公尺,大於0)。");
+      finishHeightAttempt();
+      return;
+    }
+
+    // 樹頭角太接近垂直時 tan() 會爆炸,不管哪個模式都要先擋下來
+    if (Math.abs(capturedTopDeg) >= TOP_ANGLE_MAX_DEG) {
+      showMsg(el.heightError, "樹頭角度太接近垂直(≥" + TOP_ANGLE_MAX_DEG + "°),請重新鎖定樹頭。");
+      finishHeightAttempt();
+      return;
+    }
+
+    if (manualDValid) {
+      // ---- 實測距離模式(治本):D 直接採實測值,只需樹頭角即可算樹高 ----
+      var tanTop = Math.tan(deg2rad(capturedTopDeg));
+      var Hm = h + manualD * tanTop;
+      if (!isFinite(Hm) || !(Hm > 0)) {
+        showMsg(el.heightError, "樹高計算為零或負值,請確認樹頭角度是否高於水平、眼高是否正確。");
+        finishHeightAttempt();
+        return;
+      }
+
+      D = manualD;
+      H = Hm;
+      dSource = "manual";
+
+      // 若也有鎖定樹基角,拿俯角推算距離做交叉檢查(僅提示,不影響計算)
+      if (capturedBaseDeg !== null && Math.abs(capturedBaseDeg) > BASE_ANGLE_MIN_DEG) {
+        var tanBaseCheck = Math.tan(deg2rad(capturedBaseDeg));
+        var Dcheck = -h / tanBaseCheck;
+        if (isFinite(Dcheck) && Dcheck > 0) {
+          var diffRatio = Math.abs(Dcheck - manualD) / manualD;
+          if (diffRatio > 0.3) {
+            showMsg(
+              el.heightInfo,
+              "俯角推算距離約 " + Dcheck.toFixed(1) + " m,與實測值差異較大,請確認眼高與角度是否正確(不影響計算,計算以實測距離為準)。",
+              "info"
+            );
+          }
+        }
+      }
+
+      el.resultH.textContent = "樹高 H ≈ " + H.toFixed(2) + " m";
+      el.resultD.textContent = "實測距離 D = " + D.toFixed(2) + " m";
+      showHeightRange("manual", h, null, capturedTopDeg, manualD, H);
+      el.heightResultBox.style.display = "block";
+      finishHeightAttempt();
+      return;
+    }
+
+    // ---- 俯角推算模式(原流程):樹基+樹頭角度反推距離 ----
+    // 邊界取 <=BASE_ANGLE_MIN_DEG(而非嚴格 <),讓 |θ_base|=3° 這個邊界值也會被拒算。
+    // 此閘門同時取代了原本單獨判斷 tan(θ_base) 是否接近 0 的除零防呆:
+    // tan(3°)≈0.052 已遠離 0,通過此閘門後 tanBase 不會再有除以接近 0 的風險。
+    if (Math.abs(capturedBaseDeg) <= BASE_ANGLE_MIN_DEG) {
+      showMsg(el.heightError, "俯角太小(≤" + BASE_ANGLE_MIN_DEG + "°),推算距離會非常不準;請靠近樹一點,或填入實測距離 D。");
+      finishHeightAttempt();
+      return;
+    }
+
+    var tanBase = Math.tan(deg2rad(capturedBaseDeg));
+    var tanTopE = Math.tan(deg2rad(capturedTopDeg));
+
+    var Dc = -h / tanBase;
+    if (!isFinite(Dc) || Dc <= 0) {
+      showMsg(el.heightError, "計算結果不穩定(角度太接近垂直或輸入異常),請重新鎖定樹基/樹頭角度。");
+      finishHeightAttempt();
+      return;
+    }
+
+    var Hc = h + Dc * tanTopE;
+    if (!isFinite(Hc) || !(Hc > 0)) {
+      showMsg(el.heightError, "樹高計算為零或負值,請確認樹頭角度是否高於水平、眼高是否正確。");
+      finishHeightAttempt();
+      return;
+    }
+
+    D = Dc;
+    H = Hc;
+    dSource = "estimated";
+    el.resultH.textContent = "樹高 H ≈ " + H.toFixed(2) + " m";
+    el.resultD.textContent = "推算水平距離 D ≈ " + D.toFixed(2) + " m(由俯角推算,誤差可能大;DBH 距離沿用此值)";
+    showHeightRange("estimated", h, capturedBaseDeg, capturedTopDeg, null, H);
+    el.heightResultBox.style.display = "block";
+    finishHeightAttempt();
+  }
+
+  // =========================================================
+  // DBH 相機估算
+  // =========================================================
+  function updateDbhReadout() {
+    if (!hasTrunkShot) {
+      // 還沒真的拍過樹幹(可能只做過 FOV 校正,或根本還沒拍過任何東西):
+      // lineX 這時候可能是 FOV 校正物留下的線位,不能拿來當樹幹兩線算 DBH。
+      el.dbhPxReadout.textContent = "尚未拍攝";
+      el.dbhCameraEstimate.textContent = "尚未拍攝樹幹,請按「拍攝樹幹」凍結畫面後再拖曳兩線量胸徑。";
+      cameraDbhEstimateM = null;
+      updateBanner();
+      return;
+    }
+
+    var p = Math.abs(lineX[1] - lineX[0]);
+    el.dbhPxReadout.textContent = "樹幹兩線間距 p_trunk = " + p.toFixed(1) + " px";
+    refreshFovStatus();
+
+    if (D === null) {
+      el.dbhCameraEstimate.textContent = "尚未算出距離 D,請先完成「① 樹高」(鎖定樹基與樹頂)。";
+      cameraDbhEstimateM = null;
+      updateBanner();
+      return;
+    }
+    var eff = getEffectiveFpx();
+    if (!eff) {
+      el.dbhCameraEstimate.textContent = "相機焦距異常,無法估算,請重新拍攝或重新校正。";
+      cameraDbhEstimateM = null;
+      updateBanner();
+      return;
+    }
+    if (p <= 0) {
+      el.dbhCameraEstimate.textContent = "兩線重疊,請拉開兩線並對齊樹幹左右邊緣。";
+      cameraDbhEstimateM = null;
+      updateBanner();
+      return;
+    }
+    var dbhM = (p * D) / eff.fpx;
+    if (!isFinite(dbhM) || dbhM <= 0) {
+      el.dbhCameraEstimate.textContent = "估算結果異常,請重新拍攝或調整兩線位置。";
+      cameraDbhEstimateM = null;
+      updateBanner();
+      return;
+    }
+    cameraDbhEstimateM = dbhM;
+    el.dbhCameraEstimate.textContent =
+      "相機估算 DBH ≈ " +
+      (dbhM * 100).toFixed(1) +
+      " cm(D=" + D.toFixed(2) + "m,f_px=" + eff.fpx.toFixed(0) +
+      "," + (eff.source === "calibrated" ? "已校正" : "未校正/粗估") + ")";
+    updateBanner();
+  }
+
+  el.inputManualDbh.addEventListener("input", function () {
+    // H1:手動 DBH 一改,原本用舊 DBH 算出的碳匯結果就過期了
+    invalidateCarbonResult();
+    updateBanner();
+  });
+
+  // =========================================================
+  // 記錄位置(GPS)— 單次定位,不使用 watchPosition(不持續追蹤,省電且單純)
+  // =========================================================
+  function handleRecordGps() {
+    showMsg(el.gpsError, "");
+    if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== "function") {
+      showMsg(el.gpsError, "此瀏覽器不支援定位。");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    });
+  }
+
+  function onGpsSuccess(pos) {
+    var lat = pos && pos.coords ? pos.coords.latitude : NaN;
+    var lng = pos && pos.coords ? pos.coords.longitude : NaN;
+    var accuracy = pos && pos.coords ? pos.coords.accuracy : NaN;
+
+    if (!isFinite(lat) || !isFinite(lng)) {
+      showMsg(el.gpsError, "定位結果異常(緯度/經度非有限數),請重新定位。");
+      return;
+    }
+
+    var timeStr = new Date().toLocaleString("zh-Hant-TW");
+    gpsCoord = {
+      lat: lat,
+      lng: lng,
+      accuracy: isFinite(accuracy) ? accuracy : null,
+      timeStr: timeStr
+    };
+
+    showMsg(el.gpsError, "");
+    el.gpsLatLng.textContent = "緯度 " + lat.toFixed(6) + ", 經度 " + lng.toFixed(6);
+    el.gpsAccuracy.textContent =
+      "精度 ≈ " + (gpsCoord.accuracy !== null ? Math.round(gpsCoord.accuracy) + " 公尺" : "未知");
+    el.gpsTime.textContent = "記錄時間:" + timeStr;
+    el.gpsResultBox.style.display = "block";
+    el.btnRetakeGps.style.display = "block";
+    el.btnRecordGps.textContent = "📍 重新定位";
+  }
+
+  function onGpsError(err) {
+    var code = err ? err.code : null;
+    var msg;
+    if (code === 1) {
+      msg = "定位權限被拒,請在瀏覽器/系統設定允許此頁存取位置後再試。";
+    } else if (code === 2 || code === 3) {
+      msg = "暫時取不到位置,請到空曠處或稍後重試。";
+    } else {
+      msg = "定位失敗,請重試。(" + (err && err.message ? err.message : err) + ")";
+    }
+    showMsg(el.gpsError, msg);
+  }
+
+  el.btnRecordGps.addEventListener("click", handleRecordGps);
+  el.btnRetakeGps.addEventListener("click", handleRecordGps);
+
+  // =========================================================
+  // 算碳匯
+  // =========================================================
+  el.btnComputeCarbon.addEventListener("click", function () {
+    showMsg(el.carbonError, "");
+    el.carbonResultBox.style.display = "none";
+
+    if (H === null || D === null || !isFinite(H) || !isFinite(D) || !(H > 0)) {
+      showMsg(el.carbonError, "請先完成「① 樹高」,取得有效的樹高 H 與距離 D。");
+      return;
+    }
+
+    var speciesKey = el.selectSpecies.value;
+    var info = SPECIES[speciesKey] || SPECIES.other;
+    var isPalm = info.formula === "palm";
+
+    var manualVal = parseFloat(el.inputManualDbh.value);
+    var dbhCm = null, dbhSource = null;
+    if (isFinite(manualVal) && manualVal > 0) {
+      dbhCm = manualVal;
+      dbhSource = "手動輸入";
+    } else if (cameraDbhEstimateM !== null && isFinite(cameraDbhEstimateM) && cameraDbhEstimateM > 0) {
+      dbhCm = cameraDbhEstimateM * 100;
+      dbhSource = "相機估算";
+    } else if (!isPalm) {
+      // 棕櫚公式(Frangi & Lugo)不吃 DBH,量測步驟允許跳過;
+      // 其餘樹種的公式都需要 DBH,沒量到就不能算。
+      showMsg(el.carbonError, "請先完成胸徑量測(拍攝樹幹並調整兩線),或手動輸入 DBH(公分)。");
+      return;
+    }
+
+    if (dbhCm !== null && (!isFinite(dbhCm) || dbhCm <= 0)) {
+      showMsg(el.carbonError, "DBH 數值異常,請重新量測或輸入。");
+      return;
+    }
+
+    var agbKg, biomassKg, agbOnly = false, agbNote = "";
+    var dbhBelowMin = false;
+
+    if (info.formula === "bamboo") {
+      // AR-TMS0003 散生竹單稈式,單稈、僅地上部,不乘根莖係數
+      agbKg = 0.0502 * Math.pow(dbhCm * dbhCm * H, 0.8223);
+      biomassKg = agbKg;
+      agbOnly = true;
+      agbNote = "(單稈、僅地上部)";
+    } else if (isPalm) {
+      // Frangi & Lugo (1985):原式 H 為「莖高」、樣本為單一棕櫚種,這裡用總樹高
+      // 代入會偏高;DBH 若有量測值仍照常顯示(供紀錄用),但不會進入此公式。
+      agbKg = 4.5 + 7.7 * H;
+      biomassKg = agbKg;
+      agbOnly = true;
+      agbNote = "(僅地上部;棕櫚公式以莖高為準,以總樹高代入會偏高,僅供粗估)";
+    } else {
+      // Chave et al.(2014)+ IPCC(2006)通用喬木式(趙國容等2022 eqn 13)
+      if (dbhCm < 5) dbhBelowMin = true;
+      agbKg = 0.0673 * Math.pow(info.rho * dbhCm * dbhCm * H, 0.976);
+      biomassKg = agbKg * ROOT_FACTOR;
+    }
+
+    var carbonKg = biomassKg * info.cf;
+    var co2eKg = carbonKg * C_TO_CO2;
+
+    // 加嚴為「有限且 > 0」:AGB/生物量/含碳量/CO2e 只要有一項落在 0 或負值,
+    // 就代表上游輸入異常(例如角度符號算錯導致 H/DBH 帶著錯誤符號流進來),
+    // 不該讓使用者看到一個表面正常、實際上沒有物理意義的結果。
+    var allPositive = [agbKg, biomassKg, carbonKg, co2eKg].every(function (v) {
+      return isFinite(v) && v > 0;
+    });
+    if (!allPositive) {
+      showMsg(el.carbonError, "碳匯計算結果異常(非正數),請重新量測後再試。");
+      return;
+    }
+
+    if (dbhBelowMin) {
+      showMsg(el.carbonError, "DBH 低於公式適用下限 5 cm,結果僅供參考。", "info");
+    }
+
+    lastCarbonResult = { agbKg: agbKg, biomassKg: biomassKg, carbonKg: carbonKg, co2eKg: co2eKg, dbhCm: dbhCm, dbhSource: dbhSource };
+
+    var dText = dSource === "manual"
+      ? "距離 D = " + D.toFixed(2) + " m(實測)"
+      : "推算距離 D ≈ " + D.toFixed(2) + " m(由俯角推算)";
+
+    var dbhText = dbhCm === null
+      ? "胸徑 DBH:未量測(棕櫚公式不需要 DBH)"
+      : "胸徑 DBH ≈ " + dbhCm.toFixed(1) + " cm(" + dbhSource + ")" + (isPalm ? "(僅記錄,未進入棕櫚公式)" : "");
+
+    el.carbonCo2e.textContent = co2eKg.toFixed(2) + " kg CO2e";
+    el.carbonH.textContent = "樹高 H ≈ " + H.toFixed(2) + " m";
+    el.carbonDbh.textContent = dbhText;
+    el.carbonD.textContent = dText;
+    el.carbonAgb.textContent = "地上生物量 AGB ≈ " + agbKg.toFixed(2) + " kg" + agbNote;
+    el.carbonBiomass.textContent =
+      (agbOnly ? "地上部生物量(不含地下部)≈ " : "全株生物量 ≈ ") + biomassKg.toFixed(2) + " kg";
+    el.carbonCarbon.textContent = "含碳量 ≈ " + carbonKg.toFixed(2) + " kg";
+
+    // 若使用者有記錄過 GPS 位置就併入結果摘要,沒有記錄就不顯示這一行,不報錯
+    if (gpsCoord) {
+      el.carbonGps.textContent =
+        "位置:緯度 " + gpsCoord.lat.toFixed(6) + ", 經度 " + gpsCoord.lng.toFixed(6) +
+        (gpsCoord.accuracy !== null ? "(精度≈" + Math.round(gpsCoord.accuracy) + "公尺)" : "") +
+        ",記錄於 " + gpsCoord.timeStr;
+      el.carbonGps.style.display = "block";
+    } else {
+      el.carbonGps.textContent = "";
+      el.carbonGps.style.display = "none";
+    }
+
+    el.carbonResultBox.style.display = "block";
+    updateBanner();
+  });
+
+  // =========================================================
+  // 重設目前量測(不影響已儲存的樹木清單)
+  // 抽成具名函式,「重設」按鈕與「儲存這棵樹」成功後都呼叫同一份邏輯,
+  // 避免重複寫兩次清空狀態的程式碼。
+  // =========================================================
+  function resetMeasurementState() {
+    clearPendingLock();
+    capturedBaseDeg = null;
+    capturedTopDeg = null;
+    D = null;
+    H = null;
+    dSource = null;
+    cameraDbhEstimateM = null;
+    hasTrunkShot = false;
+    lastCarbonResult = null;
+    gpsCoord = null;
+    mode = "live";
+    clearSnapshot();
+    if (cameraReady) el.cameraVideo.play(); // 若重設前正處於凍結狀態,恢復即時預覽
+
+    el.baseValue.textContent = "未擷取";
+    el.topValue.textContent = "未擷取";
+    resetLockButtons();
+    el.heightResultBox.style.display = "none";
+    el.resultHRange.textContent = "";
+    el.dbhPxReadout.textContent = "尚未拍攝";
+    el.dbhCameraEstimate.textContent = "";
+    el.inputManualDbh.value = "";
+    el.inputManualDist.value = "";
+    el.btnRetakeTrunk.style.display = "none";
+    el.btnRetakeFov.style.display = "none";
+    el.btnSaveFov.style.display = "none";
+    el.btnRetakeGps.style.display = "none";
+    el.btnRecordGps.textContent = "📍 記錄位置";
+    el.gpsResultBox.style.display = "none";
+    el.carbonGps.textContent = "";
+    el.carbonGps.style.display = "none";
+    el.carbonResultBox.style.display = "none";
+    el.inputTreeName.value = "";
+    showMsg(el.baseMsg, "");
+    showMsg(el.heightError, "");
+    showMsg(el.heightInfo, "");
+    showMsg(el.carbonError, "");
+    showMsg(el.fovMsg, "");
+    showMsg(el.gpsError, "");
+    showMsg(el.saveTreeMsg, "");
+    updateBanner();
+  }
+
+  el.btnResetAll.addEventListener("click", resetMeasurementState);
+
+  // =========================================================
+  // 儲存這棵樹 / 樹木清單 / 全場域碳總量(localStorage,key = "cmytrees.trees")
+  // =========================================================
+  function loadTreesFromStorage() {
+    try {
+      var raw = localStorage.getItem(TREES_STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      // 防呆:過濾掉格式不對的壞資料,不讓整頁掛掉
+      var cleaned = parsed.filter(function (t) {
+        return t && typeof t === "object" && typeof t.id === "string";
+      });
+      // L1:過濾掉壞資料後把乾淨版本寫回 localStorage,避免下次讀取又要重新過濾同一批壞資料
+      if (cleaned.length !== parsed.length) {
+        try {
+          localStorage.setItem(TREES_STORAGE_KEY, JSON.stringify(cleaned));
+        } catch (e) {
+          // 寫回失敗不影響本次讀取結果,只是壞資料會留到下次
+        }
+      }
+      return cleaned;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveTreesToStorage() {
+    try {
+      localStorage.setItem(TREES_STORAGE_KEY, JSON.stringify(trees));
+      return true;
+    } catch (e) {
+      showMsg(el.saveTreeMsg, "儲存到本機失敗(可能是瀏覽器儲存空間已滿或不允許存取),請清除部分資料後再試。");
+      return false;
+    }
+  }
+
+  function makeTreeId() {
+    return "t_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function speciesLabel(key) {
+    var info = SPECIES[key];
+    return info ? info.label : "未知樹種";
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderSummary() {
+    var total = 0;
+    var hasLegacyRecord = false;
+    for (var i = 0; i < trees.length; i++) {
+      var v = trees[i].co2eKg;
+      if (typeof v === "number" && isFinite(v)) total += v;
+      // 舊版佔位公式時期存的紀錄沒有 formulaVersion 欄位,總量裡混了這種舊
+      // 紀錄的話要提醒使用者,但不動舊紀錄本身(向後相容,不做資料遷移)。
+      if (trees[i].formulaVersion !== 2) hasLegacyRecord = true;
+    }
+    el.summaryTotalCo2e.textContent = total.toFixed(2) + " kg CO2e";
+    el.summaryTotalCount.textContent = "共 " + trees.length + " 棵";
+    el.tabListLabel.textContent = trees.length > 0 ? "清單(" + trees.length + ")" : "清單";
+
+    if (hasLegacyRecord) {
+      showMsg(el.summaryLegacyNote, "總量含舊版佔位公式時期的紀錄,建議重測後刪除舊筆。", "info");
+    } else {
+      showMsg(el.summaryLegacyNote, "");
+    }
+  }
+
+  function renderTreeList() {
+    renderSummary();
+    updateSyncUi(); // 匯出/同步區塊的待同步筆數要跟著清單一起更新(新增/刪除/改名/同步後都會呼叫到這裡)
+
+    if (trees.length === 0) {
+      el.treeListEmpty.style.display = "block";
+      el.treeList.innerHTML = "";
+      return;
+    }
+    el.treeListEmpty.style.display = "none";
+
+    var html = "";
+    for (var i = trees.length - 1; i >= 0; i--) {
+      // 新儲存的排在上面
+      var t = trees[i];
+      var nameLabel = t.name ? escapeHtml(t.name) : "(未命名)";
+      var dbhText = typeof t.dbhCm === "number" && isFinite(t.dbhCm) ? t.dbhCm.toFixed(1) + " cm" : "—";
+      var hText = typeof t.heightM === "number" && isFinite(t.heightM) ? t.heightM.toFixed(2) + " m" : "—";
+      var co2eText = typeof t.co2eKg === "number" && isFinite(t.co2eKg) ? t.co2eKg.toFixed(2) + " kg" : "—";
+
+      var gpsText = "";
+      if (
+        typeof t.lat === "number" && isFinite(t.lat) &&
+        typeof t.lng === "number" && isFinite(t.lng)
+      ) {
+        gpsText =
+          "GPS:緯度 " + t.lat.toFixed(6) + ",經度 " + t.lng.toFixed(6) +
+          (typeof t.accuracy === "number" && isFinite(t.accuracy) ? "(精度≈" + Math.round(t.accuracy) + "公尺)" : "");
+      }
+
+      var createdText = "";
+      try {
+        createdText = t.createdAt ? new Date(t.createdAt).toLocaleString("zh-Hant-TW") : "";
+      } catch (e) {
+        createdText = "";
+      }
+
+      html +=
+        '<div class="tree-row">' +
+          '<div class="tree-row-main">' +
+            "<b>" + nameLabel + "</b>(" + escapeHtml(speciesLabel(t.species)) + ")" +
+            '<div class="tree-row-sub">DBH ' + dbhText + "・樹高 " + hText + "・CO2e " + co2eText + "</div>" +
+            (gpsText ? '<div class="tree-row-sub">' + escapeHtml(gpsText) + "</div>" : "") +
+            (createdText ? '<div class="tree-row-sub" style="color:#999;">記錄於 ' + escapeHtml(createdText) + "</div>" : "") +
+            (t.syncedAt
+              ? '<div class="tree-row-sub" style="color:#2e7d32;">已同步 ' + escapeHtml(formatReadableTime(t.syncedAt)) + "</div>"
+              : '<div class="tree-row-sub" style="color:#999;">尚未同步</div>') +
+          "</div>" +
+          '<div class="tree-row-actions">' +
+            '<button type="button" class="ghost" data-action="rename" data-id="' + escapeHtml(t.id) + '">改名</button>' +
+            '<button type="button" class="danger" data-action="delete" data-id="' + escapeHtml(t.id) + '">刪除</button>' +
+          "</div>" +
+        "</div>";
+    }
+    el.treeList.innerHTML = html;
+  }
+
+  function deleteTree(id) {
+    trees = trees.filter(function (t) { return t.id !== id; });
+    forgetMongoSynced(id); // 刪除只影響本機,不會刪除雲端已有的紀錄
+    saveTreesToStorage();
+    renderTreeList();
+  }
+
+  function renameTree(id) {
+    var target = null;
+    for (var i = 0; i < trees.length; i++) {
+      if (trees[i].id === id) { target = trees[i]; break; }
+    }
+    if (!target) return;
+    var newName = window.prompt("輸入新的名稱/編號(留空可清除名稱):", target.name || "");
+    if (newName === null) return; // 使用者按取消
+    target.name = newName.trim() === "" ? null : newName.trim();
+    saveTreesToStorage();
+    forgetMongoSynced(id); // 改名後讓它重送(伺服器以 upsert 更新)
+    mongoDirty[id] = true;
+    renderTreeList();
+    if (hasConsent()) doMongoSync();
+  }
+
+  el.treeList.addEventListener("click", function (e) {
+    var target = e.target;
+    // 用簡單的往上找最多 3 層,避免依賴 Element.closest 相容性
+    var depth = 0;
+    while (target && target !== el.treeList && depth < 3) {
+      if (target.tagName === "BUTTON" && target.getAttribute("data-action")) break;
+      target = target.parentNode;
+      depth++;
+    }
+    if (!target || target === el.treeList || !target.getAttribute) return;
+    var action = target.getAttribute("data-action");
+    var id = target.getAttribute("data-id");
+    if (!action || !id) return;
+
+    if (action === "delete") {
+      var ok = window.confirm("確定要刪除這筆樹木紀錄嗎?此動作無法復原。");
+      if (!ok) return;
+      deleteTree(id);
+    } else if (action === "rename") {
+      renameTree(id);
+    }
+  });
+
+  // 量測過程快照(存檔當下的原始輸入與狀態,給 MongoDB 紀錄用;不參與任何計算)。
+  // 舊紀錄沒有 measure 欄位,讀取端一律要容許 undefined。
+  function buildMeasureSnapshot() {
+    var eyeH = parseFloat(el.inputEyeH.value);
+    var cameraDbh = !!(lastCarbonResult && lastCarbonResult.dbhSource === "相機估算");
+    var manualDbh = !!(lastCarbonResult && lastCarbonResult.dbhSource === "手動輸入");
+    var range = null;
+    try {
+      if (dSource && isFinite(eyeH) && capturedTopDeg !== null) {
+        var r = computeHeightRange(
+          dSource,
+          eyeH,
+          capturedBaseDeg,
+          capturedTopDeg,
+          dSource === "manual" ? D : null,
+          H
+        );
+        if (r && isFinite(r.lo) && isFinite(r.hi)) range = { lo: r.lo, hi: r.hi };
+      }
+    } catch (e) {
+      range = null;
+    }
+    var pTrunk = null, fPx = null, fovCalibrated = null;
+    if (cameraDbh && hasTrunkShot) {
+      var p = Math.abs(lineX[1] - lineX[0]);
+      if (isFinite(p)) pTrunk = p;
+      var eff = getEffectiveFpx();
+      if (eff) {
+        fPx = eff.fpx;
+        fovCalibrated = eff.source === "calibrated";
+      }
+    }
+    function numOrNull(v) { return typeof v === "number" && isFinite(v) ? v : null; }
+    return {
+      thetaBaseDeg: numOrNull(capturedBaseDeg),
+      thetaTopDeg: numOrNull(capturedTopDeg),
+      eyeHeightM: numOrNull(eyeH),
+      distanceM: numOrNull(D),
+      dSource: dSource || null,
+      heightRangeM: range,
+      dbhSource: cameraDbh ? "camera" : (manualDbh ? "manual" : null),
+      pTrunkPx: pTrunk,
+      fPx: fPx,
+      fovCalibrated: fovCalibrated,
+      zeroRef: calibrated ? numOrNull(zeroRef) : null,
+      invert: SIGN === 1,
+      calOrient: calOrient || null,
+      calSavedAt: levelCalSavedAt || null,
+      userAgent: String(navigator.userAgent || "").slice(0, 300),
+      appVersion: APP_VERSION
+    };
+  }
+
+  el.btnSaveTree.addEventListener("click", function () {
+    showMsg(el.saveTreeMsg, "");
+    if (!lastCarbonResult || H === null || !isFinite(H)) {
+      showMsg(el.saveTreeMsg, "請先按「計算碳匯」算出結果,才能儲存這棵樹。");
+      return;
+    }
+
+    var nameRaw = el.inputTreeName.value.trim();
+    var tree = {
+      id: makeTreeId(),
+      name: nameRaw === "" ? null : nameRaw,
+      species: el.selectSpecies.value,
+      dbhCm: typeof lastCarbonResult.dbhCm === "number" && isFinite(lastCarbonResult.dbhCm) ? lastCarbonResult.dbhCm : null,
+      heightM: isFinite(H) ? H : null,
+      co2eKg: typeof lastCarbonResult.co2eKg === "number" && isFinite(lastCarbonResult.co2eKg) ? lastCarbonResult.co2eKg : null,
+      lat: gpsCoord ? gpsCoord.lat : null,
+      lng: gpsCoord ? gpsCoord.lng : null,
+      accuracy: gpsCoord ? gpsCoord.accuracy : null,
+      createdAt: new Date().toISOString(),
+      // formulaVersion 2 = 本次修正後的文獻碳匯公式(Chave/AR-TMS0003/Frangi&Lugo);
+      // 沒有這個欄位的舊紀錄代表存於改版前的佔位公式時期,需另外標記提醒。
+      formulaVersion: 2,
+      dSource: dSource,
+      measure: buildMeasureSnapshot() // 量測過程(只給 MongoDB;Google 試算表 payload 不含此欄)
+    };
+
+    trees.push(tree);
+    var ok = saveTreesToStorage();
+    if (!ok) {
+      trees.pop(); // 存不進 localStorage 就不留在記憶體清單裡,避免畫面與實際儲存狀態不一致
+      return;
+    }
+
+    renderTreeList();
+    // resetMeasurementState() 內部會清空 saveTreeMsg,所以要先重設再顯示成功訊息,
+    // 否則「已儲存」訊息會被立刻清掉。
+    resetMeasurementState();
+    showMsg(el.saveTreeMsg, "已儲存!可以繼續量下一棵樹。", "ok");
+    showToast("已儲存!可以繼續量下一棵樹");
+    setStep(1); // 回到 ① 樹高,準備下一棵
+    doSync(true); // 存檔後在背景自動上傳(已同意且在線才會實際送出)
+  });
+
+  // =========================================================
+  // 資料匯出與雲端同步(選填,附加功能,不觸碰上面相機/量測/算碳的任何邏輯)
+  // =========================================================
+  var DEVICE_ID_KEY = "cmytrees.deviceId";
+  var SESSION_KEY = "cmytrees.session";
+  var CONSENT_KEY = "cmytrees.syncConsent"; // "granted" / "denied" / 未設定
+  // 內建的教學平台同步端點(公開 Apps Script Web App 網址,非機密,故可硬編)。
+  var SYNC_URL = "https://script.google.com/macros/s/AKfycbxbGyrVur-W_mYe_qywZlV77q2WXl4Q668DRz0eBO6WdEMP-iZLNf-icgo3MxPxqTOI/exec";
+  var syncInProgress = false; // 防重入旗標:手動同步按鈕與 online 事件自動同步共用
+
+  // ---- MongoDB 紀錄(與 Google 試算表各自獨立記錄成功狀態,互不影響) ----
+  var MONGO_SYNCED_KEY = "cmytrees.mongoSynced"; // JSON map: { recordId: 上傳成功時間 ISO }
+  var MONGO_ENDPOINT = "/api/records";
+  var MONGO_BATCH = 100;               // 每批最多幾筆(伺服器上限 100 筆/256KB)
+  var MONGO_BATCH_BYTES = 190 * 1024;  // 每批 UTF-8 位元組上限(伺服器上限 256KB,留餘裕)
+  var mongoBatchLimit = MONGO_BATCH;   // 整批被拒(400/413)時對半縮小,重試用
+  var mongoInProgress = false;
+  var mongoDisabled = false;  // 本次開啟期間不再嘗試(伺服器未啟用 / 端點不存在 / 認證失敗)
+  var mongoDisabledReason = ""; // "off"=未啟用;"auth"=認證失敗
+  var mongoDirty = {};        // 記憶體內:送出期間被改名的 id,該次成功不標記、之後重送
+  var mongoLastError = "";    // 暫時性失敗(網路/429/5xx/格式問題):下次同步時再試
+
+  // ---- 匿名裝置代碼:第一次啟動建立,之後固定不變,不含任何個資 ----
+  function loadOrCreateDeviceId() {
+    try {
+      var existing = localStorage.getItem(DEVICE_ID_KEY);
+      if (existing) return existing;
+    } catch (e) {}
+    var id;
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        id = crypto.randomUUID();
+      } else {
+        id = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+      }
+    } catch (e) {
+      id = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10);
+    }
+    try { localStorage.setItem(DEVICE_ID_KEY, id); } catch (e) {}
+    return id;
+  }
+  var deviceId = loadOrCreateDeviceId();
+
+  function loadSession() {
+    try { return localStorage.getItem(SESSION_KEY) || ""; } catch (e) { return ""; }
+  }
+  function saveSession(v) {
+    try { localStorage.setItem(SESSION_KEY, v); } catch (e) {}
+  }
+
+  function consentValue() {
+    try { return localStorage.getItem(CONSENT_KEY) || ""; } catch (e) { return ""; }
+  }
+  function hasConsent() { return consentValue() === "granted"; }
+  function setConsent(v) {
+    try { localStorage.setItem(CONSENT_KEY, v); } catch (e) {}
+  }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  function timestampForFilename() {
+    var d = new Date();
+    return (
+      d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+      "_" + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds())
+    );
+  }
+
+  // 可讀時間字串,明確標示時區(避免匯出資料被誤讀成其他時區時間)
+  function formatReadableTime(iso) {
+    if (!iso) return "";
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString("zh-Hant-TW", { timeZoneName: "short" });
+    } catch (e) {
+      return String(iso);
+    }
+  }
+
+  function triggerBlobDownload(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // CSV 欄位轉義:
+  //  1. 以 = + - @ Tab CR 開頭的欄位前置單引號,避免被試算表當成公式執行(公式注入防護)。
+  //  2. 內含逗號、雙引號、換行的欄位改用雙引號包起來,內部雙引號用兩個雙引號跳脫。
+  function csvField(value) {
+    var s = value === null || value === undefined ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) {
+      s = "'" + s;
+    }
+    if (/["\n\r,]/.test(s)) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function buildTreesCsv(list) {
+    var headers = [
+      "id", "name", "speciesKey", "speciesLabel",
+      "dbhCm", "heightM", "co2eKg",
+      "lat", "lng", "accuracyM",
+      "createdAtIso", "createdAtReadable",
+      "deviceId", "session", "syncedAt",
+      "formulaVersion", "dSource"
+    ];
+    var lines = [headers.map(csvField).join(",")];
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      var row = [
+        t.id,
+        t.name || "",
+        t.species || "",
+        speciesLabel(t.species),
+        typeof t.dbhCm === "number" && isFinite(t.dbhCm) ? t.dbhCm : "",
+        typeof t.heightM === "number" && isFinite(t.heightM) ? t.heightM : "",
+        typeof t.co2eKg === "number" && isFinite(t.co2eKg) ? t.co2eKg : "",
+        typeof t.lat === "number" && isFinite(t.lat) ? t.lat : "",
+        typeof t.lng === "number" && isFinite(t.lng) ? t.lng : "",
+        typeof t.accuracy === "number" && isFinite(t.accuracy) ? t.accuracy : "",
+        t.createdAt || "",
+        formatReadableTime(t.createdAt),
+        deviceId,
+        loadSession(),
+        t.syncedAt || "",
+        // 舊版佔位公式時期存的紀錄沒有這兩個欄位,輸出空字串(而非 undefined 字樣)
+        typeof t.formulaVersion === "number" ? t.formulaVersion : "",
+        t.dSource || ""
+      ].map(csvField);
+      lines.push(row.join(","));
+    }
+    return lines.join("\r\n");
+  }
+
+  function handleExportCsv() {
+    var csv = buildTreesCsv(trees);
+    // UTF-8 with BOM,避免 Excel 開啟中文亂碼
+    var blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    triggerBlobDownload(blob, "twtrees_" + timestampForFilename() + ".csv");
+  }
+
+  function handleExportJson() {
+    var payload = {
+      exportedAt: new Date().toISOString(),
+      deviceId: deviceId,
+      session: loadSession(),
+      trees: trees
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8;" });
+    triggerBlobDownload(blob, "twtrees_" + timestampForFilename() + ".json");
+  }
+
+  el.btnExportCsv.addEventListener("click", handleExportCsv);
+  el.btnExportJson.addEventListener("click", handleExportJson);
+
+  function loadMongoSynced() {
+    try {
+      var raw = localStorage.getItem(MONGO_SYNCED_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      var map = {};
+      if (Array.isArray(parsed)) {
+        parsed.forEach(function (id) { if (typeof id === "string") map[id] = true; });
+      } else if (parsed && typeof parsed === "object") {
+        Object.keys(parsed).forEach(function (id) { map[id] = parsed[id]; });
+      }
+      return map;
+    } catch (e) {
+      return {};
+    }
+  }
+  function saveMongoSynced(map) {
+    try { localStorage.setItem(MONGO_SYNCED_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+
+  function isRejectedMark(v) {
+    return typeof v === "string" && v.indexOf("rejected:") === 0;
+  }
+
+  // APP_VERSION 改變時,清掉原因為 http 開頭的 rejected 標記(可能是舊版 bug),讓它們重送。
+  // 其他 rejected(伺服器逐筆驗證不通過、too-large)為永久標記。
+  function purgeStaleRejected() {
+    try {
+      var VER_KEY = "cmytrees.mongoSyncedVer";
+      if (localStorage.getItem(VER_KEY) === APP_VERSION) return;
+      var map = loadMongoSynced();
+      var changed = false;
+      Object.keys(map).forEach(function (id) {
+        if (typeof map[id] === "string" && map[id].indexOf("rejected:http") === 0) {
+          delete map[id];
+          changed = true;
+        }
+      });
+      if (changed) saveMongoSynced(map);
+      localStorage.setItem(VER_KEY, APP_VERSION);
+    } catch (e) {}
+  }
+
+  function updateMongoUi() {
+    if (!el.mongoStatus) return;
+    if (mongoDisabled && mongoDisabledReason === "off") {
+      el.mongoStatus.textContent = "雲端資料庫:未啟用";
+      return;
+    }
+    if (mongoDisabled && mongoDisabledReason === "auth") {
+      el.mongoStatus.textContent = "雲端資料庫認證失敗,請重新整理頁面";
+      return;
+    }
+    var map = loadMongoSynced();
+    var done = 0, rej = 0;
+    trees.forEach(function (t) {
+      var v = map[t.id];
+      if (!v) return;
+      if (isRejectedMark(v)) rej++; else done++;
+    });
+    var text = "雲端資料庫:已上傳 " + done + "/" + trees.length + " 筆";
+    if (rej > 0) text += "(" + rej + " 筆格式不符未收)";
+    if (!hasConsent()) text += "(未同意上傳)";
+    else if (mongoLastError) text += "(" + mongoLastError + ",下次同步時再試)";
+    el.mongoStatus.textContent = text;
+  }
+
+  // 改名後要重送(upsert 更新雲端);刪除時也清掉紀錄。
+  function forgetMongoSynced(id) {
+    var map = loadMongoSynced();
+    if (map[id] !== undefined) {
+      delete map[id];
+      saveMongoSynced(map);
+    }
+  }
+
+  function updateSyncUi() {
+    var pending = trees.filter(function (t) { return !t.syncedAt; }).length;
+    el.syncPendingCount.textContent = "待同步:" + pending + " 筆(共 " + trees.length + " 筆)";
+    updateMongoUi();
+  }
+
+  // 把尚未成功上傳到 MongoDB 的紀錄(含 measure)POST 到同源 /api/records。
+  // 與 Google 試算表同步同一時機觸發(doSync 內呼叫),但成功狀態、錯誤各自獨立。
+  // 呼叫前提:已同意上傳(未同意不送任何雲端)。每次觸發最多連跑 3 輪(整批被拒縮小批次後重試)。
+  function utf8Size(str) {
+    try { return new Blob([str]).size; } catch (e) { return str.length * 3; }
+  }
+
+  function doMongoSync(round) {
+    round = round || 1;
+    if (mongoInProgress || mongoDisabled) return;
+    if (typeof navigator.onLine === "boolean" && !navigator.onLine) return;
+    var map0 = loadMongoSynced();
+    var pending = trees.filter(function (t) { return !map0[t.id]; });
+    if (pending.length === 0) { updateMongoUi(); return; }
+
+    mongoInProgress = true;
+    var session = loadSession();
+    var queue = pending.slice();
+
+    function toRecord(t) {
+      var rec = {
+        id: t.id,
+        name: t.name || "",
+        species: t.species || "",
+        dbhCm: t.dbhCm,
+        heightM: t.heightM,
+        co2eKg: t.co2eKg,
+        lat: t.lat,
+        lng: t.lng,
+        accuracy: t.accuracy,
+        notes: "",
+        createdAt: t.createdAt,
+        formulaVersion: typeof t.formulaVersion === "number" ? t.formulaVersion : null,
+        dSource: t.dSource || null
+      };
+      if (t.measure && typeof t.measure === "object") rec.measure = t.measure; // 舊紀錄沒有 measure
+      return rec;
+    }
+
+    function markRejected(id, reason) {
+      var latest = loadMongoSynced();
+      latest[id] = "rejected:" + String(reason).slice(0, 60);
+      saveMongoSynced(latest);
+    }
+
+    function finish(again) {
+      mongoInProgress = false;
+      updateMongoUi();
+      if (again && round < 3) doMongoSync(round + 1);
+    }
+
+    // 依 UTF-8 位元組與筆數切批;單筆本身就超過上限者標 rejected:too-large 略過
+    function takeBatch() {
+      var batch = [], recs = [], total = 0;
+      while (queue.length > 0 && batch.length < mongoBatchLimit) {
+        var t = queue[0];
+        var rec = toRecord(t);
+        var sz = utf8Size(JSON.stringify(rec)) + 1;
+        if (sz > MONGO_BATCH_BYTES) {
+          markRejected(t.id, "too-large");
+          queue.shift();
+          continue;
+        }
+        if (batch.length > 0 && total + sz > MONGO_BATCH_BYTES) break;
+        batch.push(t);
+        recs.push(rec);
+        total += sz;
+        delete mongoDirty[t.id]; // 這批帶的是目前最新內容;之後才被改名的才算 dirty
+        queue.shift();
+      }
+      return { batch: batch, recs: recs };
+    }
+
+    function sendNext() {
+      var taken = takeBatch();
+      var batch = taken.batch;
+      if (batch.length === 0) { mongoLastError = ""; finish(true); return; }
+      var body = JSON.stringify({
+        deviceId: deviceId,
+        session: session,
+        appVersion: APP_VERSION,
+        records: taken.recs
+      });
+      fetch(MONGO_ENDPOINT, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: body
+      }).then(function (response) {
+        return response.text().then(function (text) {
+          var parsed = null;
+          try { parsed = JSON.parse(text); } catch (e) {}
+          return { status: response.status, ok: response.ok, parsed: parsed };
+        });
+      }).then(function (r) {
+        if (r.status === 503 && r.parsed && r.parsed.error === "mongo-not-configured") {
+          // 伺服器沒設 MONGODB_URI:安靜略過,本次開啟期間不再重試
+          mongoDisabled = true; mongoDisabledReason = "off";
+          finish(false);
+          return;
+        }
+        if (r.status === 404 || r.status === 405) {
+          // 此環境沒有 /api/records(例如本機靜態伺服器):視為未啟用
+          mongoDisabled = true; mongoDisabledReason = "off";
+          finish(false);
+          return;
+        }
+        if (r.status === 401) {
+          mongoDisabled = true; mongoDisabledReason = "auth";
+          finish(false);
+          return;
+        }
+        if (r.status === 400 || r.status === 415) {
+          // 整包格式問題(非單筆):停止本輪、顯示錯誤、不標記任何紀錄
+          mongoLastError = "伺服器拒收(HTTP " + r.status + ")";
+          finish(false);
+          return;
+        }
+        if (r.status === 413) {
+          if (batch.length > 1) {
+            // 整批被拒:不永久停用,縮小批次(對半)後重試,找出壞的那筆
+            mongoBatchLimit = Math.max(1, Math.ceil(batch.length / 2));
+            mongoLastError = "部分資料被拒,縮小批次重試";
+            finish(true);
+          } else {
+            // 單筆仍被拒:標 rejected 略過,繼續送其餘的
+            markRejected(batch[0].id, "http413");
+            sendNext();
+          }
+          return;
+        }
+        if (!r.ok || !r.parsed || r.parsed.ok !== true) {
+          throw new Error("HTTP " + r.status);
+        }
+        // 成功:saved 與 rejected 的 id 都記入 mongoSynced(被拒者記 "rejected:<原因>"),不再重送
+        var latest = loadMongoSynced(); // 重讀,避免覆蓋期間其他寫入
+        var at = new Date().toISOString();
+        var rejectedMap = {};
+        if (Array.isArray(r.parsed.rejected)) {
+          r.parsed.rejected.forEach(function (x) {
+            if (x && typeof x.id === "string") rejectedMap[x.id] = String(x.reason || "rejected");
+          });
+        }
+        batch.forEach(function (t) {
+          if (mongoDirty[t.id]) {
+            // 送出期間被改名:這次不標記成功,清掉 dirty 讓下一輪重送新內容
+            delete mongoDirty[t.id];
+            return;
+          }
+          latest[t.id] = rejectedMap.hasOwnProperty(t.id)
+            ? "rejected:" + rejectedMap[t.id].slice(0, 60)
+            : at;
+        });
+        saveMongoSynced(latest);
+        mongoBatchLimit = MONGO_BATCH;
+        updateMongoUi();
+        sendNext();
+      }).catch(function (err) {
+        // 網路失敗 / 429 / 5xx:不標記成功,下次同步時機再試
+        mongoLastError = "上傳失敗";
+        finish(false);
+      });
+    }
+
+    sendNext();
+  }
+
+  // 同步:把尚未同步(無 syncedAt)的紀錄 POST 到使用者自行設定的 Apps Script 網址。
+  // Content-Type 故意用 text/plain,避免瀏覽器對跨網域請求送出 CORS 預檢(OPTIONS)。
+  // isAuto=true 時(例如 online 事件觸發)不主動彈訊息干擾使用者,只有明確錯誤才顯示。
+  function doSync(isAuto) {
+    // MongoDB 與 Google 試算表各自獨立:先觸發 Mongo(已同意才送),其成敗不影響下面的 Sheets 流程
+    if (hasConsent()) {
+      try { doMongoSync(); } catch (e) { mongoInProgress = false; }
+    }
+    if (syncInProgress) return; // 防重入:手動按鈕與 online 自動同步共用同一把鎖
+    if (!hasConsent()) {
+      // 尚未同意上傳:自動同步靜默略過,手動觸發則先跳一次性同意視窗。
+      if (!isAuto) showConsentOverlay();
+      return;
+    }
+    var url = SYNC_URL;
+    var pendingTrees = trees.filter(function (t) { return !t.syncedAt; });
+    if (pendingTrees.length === 0) {
+      if (!isAuto) showMsg(el.syncMsg, "目前沒有待同步的紀錄。", "info");
+      return;
+    }
+    if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
+      if (!isAuto) showMsg(el.syncMsg, "目前離線,資料已留在本機,恢復連線後可再試一次。", "info");
+      return;
+    }
+
+    syncInProgress = true;
+    el.btnSyncNow.disabled = true;
+    showMsg(el.syncMsg, "同步中...", "info");
+
+    var session = loadSession();
+    var records = pendingTrees.map(function (t) {
+      return {
+        id: t.id,
+        name: t.name || "",
+        species: t.species || "",
+        dbhCm: t.dbhCm,
+        heightM: t.heightM,
+        co2eKg: t.co2eKg,
+        lat: t.lat,
+        lng: t.lng,
+        accuracy: t.accuracy,
+        notes: "",
+        createdAt: t.createdAt,
+        deviceId: deviceId,
+        session: session,
+        // 舊版佔位公式時期存的紀錄沒有這兩個欄位,補 null(而非省略欄位),
+        // 讓接收端可以明確分辨「這筆本來就沒有」跟「欄位漏傳」。
+        formulaVersion: typeof t.formulaVersion === "number" ? t.formulaVersion : null,
+        dSource: t.dSource || null
+      };
+    });
+    var payload = JSON.stringify({ deviceId: deviceId, session: session, records: records });
+
+    function onSyncSettled() {
+      syncInProgress = false;
+      el.btnSyncNow.disabled = false;
+    }
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: payload
+    }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("伺服器回應 HTTP " + response.status);
+      }
+      return response.text();
+    }).then(function (text) {
+      var parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error("回應內容不是有效的 JSON");
+      }
+      // 成功判定:parsed 必須是物件,且 ok === true 才算成功;
+      // 解析失敗、非物件、或 ok !== true 一律視為失敗,不標記已同步(避免資料遺失或誤判)。
+      if (!parsed || typeof parsed !== "object" || parsed.ok !== true) {
+        throw new Error("同步未成功(伺服器回應 ok !== true)");
+      }
+      var syncedAt = new Date().toISOString();
+      var idSet = {};
+      pendingTrees.forEach(function (t) { idSet[t.id] = true; });
+      trees.forEach(function (t) {
+        if (idSet[t.id]) t.syncedAt = syncedAt;
+      });
+      saveTreesToStorage();
+      renderTreeList();
+      showMsg(el.syncMsg, "同步成功,已上傳 " + pendingTrees.length + " 筆。", "ok");
+      onSyncSettled();
+    }).catch(function (err) {
+      showMsg(
+        el.syncMsg,
+        "同步失敗,資料仍完整保留在本機,可稍後再試。(" + (err && err.message ? err.message : err) + ")",
+        "error"
+      );
+      onSyncSettled();
+    });
+  }
+
+  el.btnSyncNow.addEventListener("click", function () { doSync(false); });
+  window.addEventListener("online", function () { doSync(true); });
+
+  // ---- 設定欄位:場次標籤 / 同步網址,存 localStorage 當預設值 ----
+  el.inputSession.value = loadSession();
+  el.inputSession.addEventListener("input", function () { saveSession(el.inputSession.value); });
+
+  el.deviceIdDisplay.textContent = "裝置代碼:" + deviceId + "(匿名亂數,僅供比對用,非個資)";
+
+  // ---- 一次性資料上傳同意提示 ----
+  var consentOverlay = document.getElementById("consent-overlay");
+  function showConsentOverlay() { if (consentOverlay) consentOverlay.style.display = "flex"; }
+  function hideConsentOverlay() { if (consentOverlay) consentOverlay.style.display = "none"; }
+  var consentAgreeBtn = document.getElementById("consent-agree");
+  var consentDeclineBtn = document.getElementById("consent-decline");
+  if (consentAgreeBtn) consentAgreeBtn.addEventListener("click", function () {
+    setConsent("granted"); hideConsentOverlay(); doSync(true);
+  });
+  if (consentDeclineBtn) consentDeclineBtn.addEventListener("click", function () {
+    setConsent("denied"); hideConsentOverlay();
+  });
+  if (consentValue() !== "granted" && consentValue() !== "denied") {
+    showConsentOverlay(); // 第一次開啟時跳一次同意視窗
+  }
+
+  // ---- 分頁 / 步驟 / 距離模式事件 ----
+  var tabBtns = document.querySelectorAll(".tab-btn");
+  for (var tb = 0; tb < tabBtns.length; tb++) {
+    tabBtns[tb].addEventListener("click", function (e) {
+      switchTab(e.currentTarget.getAttribute("data-tab"));
+    });
+  }
+  var stepBtns = document.querySelectorAll(".step-btn");
+  for (var sb = 0; sb < stepBtns.length; sb++) {
+    stepBtns[sb].addEventListener("click", function (e) {
+      setStep(parseInt(e.currentTarget.getAttribute("data-step"), 10));
+    });
+  }
+
+  // D 欄位 placeholder 用同一組常數組字串,避免與驗證範圍不一致
+  el.inputManualDist.placeholder = "選填 " + MANUAL_D_MIN + "–" + MANUAL_D_MAX;
+
+  // ---- 初始狀態 ----
+  purgeStaleRejected();
+  var appVersionText = document.getElementById("app-version-text");
+  if (appVersionText) appVersionText.textContent = APP_VERSION;
+  loadLevelCal();     // 讀回校正值(zeroRef / 反轉),有值就視為已校正
+  updateOrientation(true); // 偵測目前手機方向(橫向 → 蓋遮罩)
+  loadEyeHeight();    // 套用上次的預設眼高
+  refreshCalTime();
+  updateSensorButtonsState();
+  updateBanner();
+  refreshFovStatus();
+  trees = loadTreesFromStorage();
+  renderTreeList();
+  doSync(true); // 載入後若已同意、在線且有待同步,背景自動補送
+
+  // ---- PWA:註冊 Service Worker(離線快取 app shell),失敗不影響主流程 ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      try {
+        navigator.serviceWorker.register("./sw.js").catch(function () {
+          // 註冊失敗只是少了離線快取這個加值功能,不影響量測/計算主流程
+        });
+      } catch (e) {
+        // 忽略:部分瀏覽器/環境(例如非 HTTPS)可能直接丟例外
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
